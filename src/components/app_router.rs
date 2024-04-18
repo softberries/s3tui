@@ -1,12 +1,12 @@
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::action::Action;
+use crate::model::action::Action;
 use crate::components::file_manager_page::FileManagerPage;
 use crate::components::component::{Component, ComponentRender};
 use crate::components::help_page::HelpPage;
-use crate::state::State;
-use crate::state::ActivePage;
+use crate::model::state::State;
+use crate::model::state::ActivePage;
 
 
 struct Props {

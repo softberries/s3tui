@@ -3,9 +3,9 @@ use ratatui::Frame;
 use ratatui::prelude::Text;
 use ratatui::widgets::Paragraph;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::action::Action;
+use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
-use crate::state::{ActivePage, State};
+use crate::model::state::{ActivePage, State};
 
 struct Props {
     /// The logged in user

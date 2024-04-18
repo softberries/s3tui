@@ -18,10 +18,10 @@ use tokio::sync::{
 };
 use tokio_stream::StreamExt;
 
-use crate::action::Action;
+use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
 use super::components::app_router::AppRouter;
-use crate::state::State;
+use crate::model::state::State;
 use crate::termination::Interrupted;
 
 const RENDERING_TICK_RATE: Duration = Duration::from_millis(250);

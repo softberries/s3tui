@@ -1,4 +1,4 @@
-use crate::state::ActivePage;
+use crate::model::state::ActivePage;
 
 #[derive(Debug, Clone)]
 pub enum Action {

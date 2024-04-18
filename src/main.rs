@@ -1,9 +1,8 @@
 mod termination;
 mod state_store;
-mod state;
 mod ui_manager;
-mod action;
 
+mod model;
 mod components;
 
 use crate::state_store::StateStore;

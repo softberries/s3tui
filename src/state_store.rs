@@ -1,8 +1,8 @@
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use crate::action::Action;
-use crate::state::{ActivePage, State};
+use crate::model::action::Action;
+use crate::model::state::{ActivePage, State};
 use crate::termination::{Interrupted, Terminator};
 
 pub struct StateStore {
