@@ -2,9 +2,9 @@ use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 use crate::action::Action;
-use crate::file_manager_page::FileManagerPage;
-use crate::component::{Component, ComponentRender};
-use crate::help_page::HelpPage;
+use crate::components::file_manager_page::FileManagerPage;
+use crate::components::component::{Component, ComponentRender};
+use crate::components::help_page::HelpPage;
 use crate::state::State;
 use crate::state::ActivePage;
 

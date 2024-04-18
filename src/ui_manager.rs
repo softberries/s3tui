@@ -19,8 +19,8 @@ use tokio::sync::{
 use tokio_stream::StreamExt;
 
 use crate::action::Action;
-use crate::component::{Component, ComponentRender};
-use super::app_router::AppRouter;
+use crate::components::component::{Component, ComponentRender};
+use super::components::app_router::AppRouter;
 use crate::state::State;
 use crate::termination::Interrupted;
 

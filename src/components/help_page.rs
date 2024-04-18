@@ -4,7 +4,7 @@ use ratatui::prelude::Text;
 use ratatui::widgets::Paragraph;
 use tokio::sync::mpsc::UnboundedSender;
 use crate::action::Action;
-use crate::component::{Component, ComponentRender};
+use crate::components::component::{Component, ComponentRender};
 use crate::state::{ActivePage, State};
 
 struct Props {
@@ -13,26 +13,26 @@ struct Props {
 }
 
 impl From<&State> for Props {
-    fn from(state: &State) -> Self {
+    fn from(_state: &State) -> Self {
         Props {
             i: "".to_string(),
         }
     }
 }
 
-pub struct FileManagerPage {
+pub struct HelpPage {
     /// Action sender
     pub action_tx: UnboundedSender<Action>,
     /// State Mapped ChatPage Props
     props: Props,
 }
 
-impl Component for FileManagerPage {
+impl Component for HelpPage {
     fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
         where
             Self: Sized,
     {
-        FileManagerPage {
+        HelpPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
@@ -44,14 +44,14 @@ impl Component for FileManagerPage {
         where
             Self: Sized,
     {
-        FileManagerPage {
+        HelpPage {
             props: Props::from(state),
             ..self
         }
     }
 
     fn name(&self) -> &str {
-        "File Manager"
+        "Help Page"
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
@@ -60,20 +60,20 @@ impl Component for FileManagerPage {
         }
 
         match key.code {
-            KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
-            }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
+            }
+            KeyCode::Esc => {
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManagerPage });
             }
             _ => {}
         }
     }
 }
 
-impl ComponentRender<()> for FileManagerPage {
+impl ComponentRender<()> for HelpPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
-        let user_info = Paragraph::new(Text::from(format!("File Manger: @{}", self.props.i)));
+        let user_info = Paragraph::new(Text::from(format!("Help Page: @{}", self.props.i)));
         frame.render_widget(user_info, frame.size());
     }
 }

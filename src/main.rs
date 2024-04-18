@@ -4,11 +4,7 @@ mod state;
 mod ui_manager;
 mod action;
 
-mod app_router;
-mod file_manager_page;
-
-mod help_page;
-mod component;
+mod components;
 
 use crate::state_store::StateStore;
 use crate::termination::{create_termination, Interrupted};
