@@ -4,6 +4,7 @@ mod ui_manager;
 
 mod model;
 mod components;
+mod fetchers;
 
 use crate::state_store::StateStore;
 use crate::termination::{create_termination, Interrupted};
