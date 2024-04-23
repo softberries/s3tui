@@ -15,7 +15,7 @@ struct Props {
     s3_table_state: TableState,
     s3_data: Vec<S3DataItem>,
     s3_history: Vec<NavigationState>,
-    current_s3_state: NavigationState,
+    s3_loading: bool,
 }
 
 impl From<&State> for Props {
@@ -27,7 +27,7 @@ impl From<&State> for Props {
             s3_table_state: TableState::default(),
             s3_data: st.s3_data,
             s3_history: Vec::new(),
-            current_s3_state: NavigationState::new(None, None),
+            s3_loading: st.s3_loading,
         }
     }
 }
@@ -38,6 +38,7 @@ pub struct FileManagerPage {
     /// State Mapped ChatPage Props
     props: Props,
     s3_panel_selected: bool,
+    default_navigation_state: NavigationState,
 }
 
 impl Component for FileManagerPage {
@@ -50,6 +51,7 @@ impl Component for FileManagerPage {
             // set the props
             props: Props::from(state),
             s3_panel_selected: true,
+            default_navigation_state: NavigationState::new(None, None),
         }
             .move_with_state(state)
     }
@@ -123,14 +125,23 @@ impl ComponentRender<()> for FileManagerPage {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(frame.size());
+        if self.props.s3_loading {
+            let loading_info = self.get_loading_info(focus_color);
+            frame.render_widget(&loading_info, chunks[0]);
+        } else {
+            let s3_table = self.get_s3_table(focus_color);
+            frame.render_stateful_widget(&s3_table, chunks[0], &mut self.props.clone().s3_table_state);
+        }
         let local_table = self.get_local_table(focus_color);
-        let s3_table = self.get_s3_table(focus_color);
-        frame.render_stateful_widget(&s3_table, chunks[0], &mut self.props.clone().s3_table_state);
         frame.render_stateful_widget(&local_table, chunks[1], &mut self.props.clone().local_table_state);
     }
 }
 
 impl FileManagerPage {
+    fn get_loading_info(&self, focus_color: Color) -> Paragraph {
+        Paragraph::new(Text::from("Loading data from s3....").fg(focus_color))
+    }
+
     fn get_local_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
@@ -144,10 +155,18 @@ impl FileManagerPage {
         table
     }
 
+    fn get_row(item: &S3DataItem) -> Row {
+        if item.is_directory {
+            Row::new(item.to_columns().clone()).bg(Color::LightGreen)
+        } else {
+            Row::new(item.to_columns().clone())
+        }
+    }
+
     fn get_s3_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_data.iter().map(|item| Row::new(item.to_columns().clone()));
+        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_row(item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
@@ -283,7 +302,7 @@ impl FileManagerPage {
     }
 
     fn current_state(&self) -> &NavigationState {
-        self.props.s3_history.last().unwrap_or(&self.props.current_s3_state)
+        self.props.s3_history.last().unwrap_or(&self.default_navigation_state)
     }
     pub fn handle_go_back_local(&mut self) {
         let _ = self.action_tx.send(Action::MoveBackLocal);

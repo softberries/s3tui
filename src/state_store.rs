@@ -70,6 +70,7 @@ impl StateStore {
         let s3_data_fetcher = S3DataFetcher::new();
         let local_data_fetcher = LocalDataFetcher::new();
         let mut state = State::default();
+        state.set_s3_loading(true);
 
         let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<Vec<S3DataItem>>();
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<Vec<LocalDataItem>>();
@@ -107,7 +108,8 @@ impl StateStore {
                         Action::FetchLocalData { path} =>
                             self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
                         Action::FetchS3Data { bucket, prefix } => {
-                            println!("Bucket: {:?}, prefix: {:?}", bucket.clone(), prefix.clone());
+                            state.set_s3_loading(true);
+                            let _ = self.state_tx.send(state.clone());
                             self.fetch_s3_data(bucket, prefix, s3_data_fetcher.clone(), s3_tx.clone()).await},
                         Action::MoveBackLocal => self.move_back_local_data(local_data_fetcher.clone(), local_tx.clone()).await,
                         // Action::MoveBackS3 => self.move_back_s3_data(s3_data_fetcher.clone(), s3_tx.clone()).await

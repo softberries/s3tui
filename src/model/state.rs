@@ -18,15 +18,21 @@ pub struct State {
     pub active_page: ActivePage,
     pub local_data: Vec<LocalDataItem>,
     pub s3_data: Vec<S3DataItem>,
+    pub s3_loading: bool
 }
 
 impl State {
     pub fn update_buckets(&mut self, bucket_list: Vec<S3DataItem>) {
         self.s3_data = bucket_list;
+        self.s3_loading = false;
     }
 
     pub fn update_files(&mut self, files: Vec<LocalDataItem>) {
         self.local_data = files;
+    }
+
+    pub fn set_s3_loading(&mut self, loading: bool) {
+        self.s3_loading = loading;
     }
     //
     // pub fn go_into(&mut self, bucket: Option<String>, prefix: Option<String>) {
