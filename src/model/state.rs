@@ -28,4 +28,20 @@ impl State {
     pub fn update_files(&mut self, files: Vec<LocalDataItem>) {
         self.local_data = files;
     }
+    //
+    // pub fn go_into(&mut self, bucket: Option<String>, prefix: Option<String>) {
+    //     if let Some(b) = bucket {
+    //         self.current_s3_state.set_bucket(b);
+    //     }
+    //     if let Some(p) = prefix {
+    //         self.current_s3_state.set_prefix(p);
+    //     }
+    //
+    //     self.s3_history.push(self.current_s3_state.clone()); // Save current state to history
+    // }
+    // pub fn go_up(&mut self) {
+    //     if let Some(last_state) = self.s3_history.pop() {
+    //         self.current_s3_state = last_state;
+    //     }
+    // }
 }

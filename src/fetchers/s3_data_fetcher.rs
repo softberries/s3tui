@@ -1,19 +1,18 @@
 use std::path::Path;
 use aws_config::meta::region::RegionProviderChain;
-use color_eyre::Result;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{Credentials, Region};
 use crate::model::s3_data_item::S3DataItem;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
-    credentials: Credentials
+    credentials: Credentials,
 }
 
 impl S3DataFetcher {
     pub fn new() -> Self {
-        let access_key = "";
-        let secret_access_key = "";
+        let access_key = "YOUR_ACCESS_KEY";
+        let secret_access_key = "YOUR_SECRET_KEY";
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
@@ -24,7 +23,15 @@ impl S3DataFetcher {
         S3DataFetcher { credentials }
     }
 
-    pub async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> Result<Vec<S3DataItem>> {
+    pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
+        match (bucket, prefix) {
+            (None, None) => self.list_buckets().await,
+            (Some(bucket), None) => self.list_objects(bucket.as_str(), None).await,
+            (Some(bucket), Some(prefix)) => self.list_objects(bucket.as_str(), Some(prefix)).await,
+            _ => self.list_buckets().await
+        }
+    }
+    async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client().await;
         let mut all_objects = Vec::new();
         let mut response = client
@@ -65,7 +72,7 @@ impl S3DataFetcher {
     }
 
     // Example async method to fetch data from an external service
-    pub async fn list_buckets(&self) -> anyhow::Result<Vec<S3DataItem>> {
+    async fn list_buckets(&self) -> anyhow::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client().await;
         let res = client.list_buckets().send().await;
         let fetched_data: Vec<S3DataItem>;

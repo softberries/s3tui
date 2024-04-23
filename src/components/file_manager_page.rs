@@ -5,6 +5,7 @@ use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
 use crate::model::state::{ActivePage, State};
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
 
 #[derive(Clone)]
@@ -13,6 +14,8 @@ struct Props {
     local_data: Vec<LocalDataItem>,
     s3_table_state: TableState,
     s3_data: Vec<S3DataItem>,
+    s3_history: Vec<NavigationState>,
+    current_s3_state: NavigationState,
 }
 
 impl From<&State> for Props {
@@ -23,6 +26,8 @@ impl From<&State> for Props {
             local_data: st.local_data,
             s3_table_state: TableState::default(),
             s3_data: st.s3_data,
+            s3_history: Vec::new(),
+            current_s3_state: NavigationState::new(None, None),
         }
     }
 }
@@ -53,8 +58,12 @@ impl Component for FileManagerPage {
         where
             Self: Sized,
     {
+        let new_props = Props::from(state);
         FileManagerPage {
-            props: Props::from(state),
+            props: Props {
+                s3_history: self.props.s3_history.clone(),
+                ..new_props
+            },
             ..self
         }
     }
@@ -69,6 +78,30 @@ impl Component for FileManagerPage {
         }
 
         match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                match self.s3_panel_selected {
+                    true => self.move_down_s3_table_selection(),
+                    false => self.move_down_local_table_selection()
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                match self.s3_panel_selected {
+                    true => self.move_up_s3_table_selection(),
+                    false => self.move_up_local_table_selection()
+                }
+            }
+            KeyCode::Enter => {
+                match self.s3_panel_selected {
+                    true => self.handle_selected_s3_row(),
+                    false => self.handle_selected_local_row()
+                }
+            }
+            KeyCode::Esc => {
+                match self.s3_panel_selected {
+                    true => self.handle_go_back_s3(),
+                    false => self.handle_go_back_local()
+                }
+            }
             KeyCode::Char('?') => {
                 let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
             }
@@ -136,4 +169,151 @@ impl FileManagerPage {
             true => Color::Blue,
         }
     }
+
+    pub fn move_up_s3_table_selection(&mut self) {
+        let i = match self.props.s3_table_state.selected() {
+            Some(i) => {
+                if i == 0_usize {
+                    self.props.s3_data.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.props.s3_table_state.select(Some(i));
+    }
+
+    pub fn move_down_s3_table_selection(&mut self) {
+        let i = match self.props.s3_table_state.selected() {
+            Some(i) => {
+                if i >= self.props.s3_data.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.props.s3_table_state.select(Some(i));
+    }
+
+    pub fn move_up_local_table_selection(&mut self) {
+        let i = match self.props.local_table_state.selected() {
+            Some(i) => {
+                if i == 0_usize {
+                    self.props.local_data.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.props.local_table_state.select(Some(i));
+    }
+
+    pub fn move_down_local_table_selection(&mut self) {
+        let i = match self.props.local_table_state.selected() {
+            Some(i) => {
+                if i >= self.props.local_data.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.props.local_table_state.select(Some(i));
+    }
+
+    pub fn handle_selected_local_row(&mut self) {
+        if let Some(selected_row) =
+            self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
+        {
+            if selected_row.is_directory {
+                let _ = self.action_tx.send(Action::FetchLocalData { path: selected_row.path.clone() });
+                // self.fetch_local_data(selected_row.path.clone());
+            }
+        }
+    }
+
+    pub fn handle_selected_s3_row(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            if selected_row.is_bucket {
+                self.go_into(Some(selected_row.path.clone()), None);
+                let _ = self.action_tx.send(Action::FetchS3Data {
+                    bucket: self.current_state().current_bucket.clone(),
+                    prefix: self.current_state().current_prefix.clone(),
+                });
+            } else if selected_row.is_directory {
+                self.go_into(None, Some(selected_row.path.clone())); //get bucket and prefix from previous entries
+                let _ = self.action_tx.send(Action::FetchS3Data {
+                    bucket: self.current_state().current_bucket.clone(),
+                    prefix: self.current_state().current_prefix.clone(),
+                });
+            }
+        }
+    }
+
+    fn go_into(&mut self, bucket: Option<String>, prefix: Option<String>) {
+        // println!("stack1: {:?}", self.props.s3_history);
+        if let Some(b) = bucket {
+            self.props.s3_history.clear();
+            self.props.s3_history.push(NavigationState::new(Some(b.clone()), None));
+        }
+        // println!("stack2: {:?}", self.props.s3_history);
+        if let Some(p) = prefix {
+            // Navigate into a new directory within the current bucket
+            let current_state = self.current_state().clone();
+            let new_prefix = match &current_state.current_prefix {
+                Some(current_prefix) => format!("{}/{}", current_prefix, p),
+                None => p,
+            };
+            self.props.s3_history.push(NavigationState::new(current_state.current_bucket.clone(), Some(new_prefix)));
+        }
+        // println!("stack3: {:?}", self.props.s3_history);
+    }
+
+    fn go_up(&mut self) {
+        if self.props.s3_history.len() > 0 {
+            self.props.s3_history.pop();
+        }
+    }
+
+    fn current_state(&self) -> &NavigationState {
+        self.props.s3_history.last().unwrap_or(&self.props.current_s3_state)
+    }
+    pub fn handle_go_back_local(&mut self) {
+        let _ = self.action_tx.send(Action::MoveBackLocal);
+    }
+
+    pub fn handle_go_back_s3(&mut self) {
+        self.go_up();
+        let _ = self.action_tx.send(Action::FetchS3Data {
+            bucket: self.current_state().current_bucket.clone(),
+            prefix: self.current_state().current_prefix.clone(),
+        });
+    }
 }
+
+/*
+let mut navigator = Navigator::new();
+
+// Simulating navigation: first into a bucket
+navigator.go_into(Some("my-bucket".to_string()), None);
+println!("After bucket: {:?}", navigator.current_state());
+
+// Then into a directory
+navigator.go_into(None, Some("first_dir".to_string()));
+println!("After first dir: {:?}", navigator.current_state());
+
+// And deeper into another directory
+navigator.go_into(None, Some("next_dir".to_string()));
+println!("After next dir: {:?}", navigator.current_state());
+
+// Going back up one level
+navigator.go_up();
+println!("After going up: {:?}", navigator.current_state());
+ */
