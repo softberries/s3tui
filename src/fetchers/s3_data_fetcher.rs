@@ -55,11 +55,11 @@ impl S3DataFetcher {
                         let file_extension = path.extension()
                             .and_then(|ext| ext.to_str()) // Convert the OsStr to a &str
                             .unwrap_or("");
-                        all_objects.push(S3DataItem::init(key.to_string(), size, file_extension, "", false, false));
+                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), size, file_extension, "", false, false));
                     }
                     for object in output.common_prefixes() {
                         let key = object.prefix().unwrap_or_default();
-                        all_objects.push(S3DataItem::init(key.to_string(), "".to_string(), "Dir", key, true, false));
+                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), "".to_string(), "Dir", key, true, false));
                     }
                 }
                 Err(err) => {
@@ -84,7 +84,7 @@ impl S3DataFetcher {
                         buckets.iter().filter_map(|bucket| {
                             // Filter out buckets where name is None, and map those with a name to a Vec<String>
                             //vec![name.clone()]
-                            bucket.name.as_ref().map(|name| S3DataItem::init(name.clone(), "".to_string(), "Bucket", name, false, true))
+                            bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true))
                         }).collect()
                     },
                 )

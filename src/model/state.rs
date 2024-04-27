@@ -1,9 +1,11 @@
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::s3_data_item::S3DataItem;
+use crate::model::s3_selected_item::S3SelectedItem;
 
 #[derive(Debug, Clone)]
 pub enum ActivePage {
     FileManagerPage,
+    TransfersPage,
     HelpPage,
 }
 
@@ -18,7 +20,11 @@ pub struct State {
     pub active_page: ActivePage,
     pub local_data: Vec<LocalDataItem>,
     pub s3_data: Vec<S3DataItem>,
-    pub s3_loading: bool
+    pub s3_loading: bool,
+    pub s3_selected_items: Vec<S3SelectedItem>,
+    pub current_local_path: String,
+    pub current_s3_bucket: String,
+    pub current_s3_path: String
 }
 
 impl State {
@@ -27,27 +33,20 @@ impl State {
         self.s3_loading = false;
     }
 
-    pub fn update_files(&mut self, files: Vec<LocalDataItem>) {
+    pub fn update_files(&mut self, path: String, files: Vec<LocalDataItem>) {
         self.local_data = files;
+        self.current_local_path = path;
+    }
+
+    pub fn set_current_local_path(&mut self, path: String) {
+        self.current_local_path = path;
     }
 
     pub fn set_s3_loading(&mut self, loading: bool) {
         self.s3_loading = loading;
     }
-    //
-    // pub fn go_into(&mut self, bucket: Option<String>, prefix: Option<String>) {
-    //     if let Some(b) = bucket {
-    //         self.current_s3_state.set_bucket(b);
-    //     }
-    //     if let Some(p) = prefix {
-    //         self.current_s3_state.set_prefix(p);
-    //     }
-    //
-    //     self.s3_history.push(self.current_s3_state.clone()); // Save current state to history
-    // }
-    // pub fn go_up(&mut self) {
-    //     if let Some(last_state) = self.s3_history.pop() {
-    //         self.current_s3_state = last_state;
-    //     }
-    // }
+
+    pub fn add_s3_selected_item(&mut self, item: S3SelectedItem) {
+        self.s3_selected_items.push(item);
+    }
 }

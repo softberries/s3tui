@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -22,11 +23,11 @@ impl StateStore {
 }
 
 impl StateStore {
-    async fn fetch_s3_data(&self, bucket: Option<String>, prefix: Option<String>, s3_data_fetcher: S3DataFetcher, s3_tx: UnboundedSender<Vec<S3DataItem>>) {
+    async fn fetch_s3_data(&self, bucket: Option<String>, prefix: Option<String>, s3_data_fetcher: S3DataFetcher, s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
         tokio::spawn(async move {
-            match s3_data_fetcher.list_current_location(bucket, prefix).await {
+            match s3_data_fetcher.list_current_location(bucket.clone(), prefix.clone()).await {
                 Ok(data) => {
-                    let _ = s3_tx.send(data);
+                    let _ = s3_tx.send((bucket.clone(), prefix.clone(), data));
                 }
                 Err(e) => {
                     eprintln!("Failed to fetch S3 data: {}", e);
@@ -34,11 +35,11 @@ impl StateStore {
             }
         });
     }
-    async fn fetch_local_data(&self, path: Option<String>, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<Vec<LocalDataItem>>) {
+    async fn fetch_local_data(&self, path: Option<String>, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
         tokio::spawn(async move {
-            match local_data_fetcher.read_directory(path).await {
+            match local_data_fetcher.read_directory(path.clone()).await {
                 Ok(data) => {
-                    let _ = local_tx.send(data);
+                    let _ = local_tx.send((path.clone().unwrap_or("/".to_string()), data));
                 }
                 Err(e) => {
                     eprintln!("Failed to fetch local data: {}", e);
@@ -47,11 +48,16 @@ impl StateStore {
             }
         });
     }
-    async fn move_back_local_data(&self, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<Vec<LocalDataItem>>) {
+    async fn move_back_local_data(&self, current_path: String, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
         tokio::spawn(async move {
+            let path = Path::new(&current_path);
+
             match local_data_fetcher.read_parent_directory().await {
                 Ok(data) => {
-                    let _ = local_tx.send(data);
+                    let _ = match path.parent() {
+                        Some(p_path) => local_tx.send((p_path.to_string_lossy().to_string(), data)),
+                        None => local_tx.send((current_path, data)),
+                    };
                 }
                 Err(e) => {
                     eprintln!("Failed to fetch local data: {}", e);
@@ -71,11 +77,12 @@ impl StateStore {
         let local_data_fetcher = LocalDataFetcher::new();
         let mut state = State::default();
         state.set_s3_loading(true);
+        state.set_current_local_path(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string());
 
-        let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<Vec<S3DataItem>>();
-        let (local_tx, mut local_rx) = mpsc::unbounded_channel::<Vec<LocalDataItem>>();
+        let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
+        let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
-        self.fetch_local_data(None, local_data_fetcher.clone(), local_tx.clone()).await;
+        self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
 
         // the initial state once
         self.state_tx.send(state.clone())?;
@@ -84,14 +91,14 @@ impl StateStore {
 
         let result = loop {
             tokio::select! {
-                    Some(bucket_list) = s3_rx.recv() => {
+                    Some((_bucket, _prefix, data)) = s3_rx.recv() => {
                         // Process the list of buckets
-                        state.update_buckets(bucket_list);
+                        state.update_buckets(data);
                         self.state_tx.send(state.clone())?;
                     },
-                    Some(files) = local_rx.recv() => {
-                        // Process the list of buckets
-                        state.update_files(files);
+                    Some((path, files)) = local_rx.recv() => {
+                        println!("Path: {}", path);
+                        state.update_files(path, files);
                         self.state_tx.send(state.clone())?;
                     },
                     Some(action) = action_rx.recv() => match action {
@@ -104,6 +111,7 @@ impl StateStore {
                             match page {
                                 ActivePage::HelpPage => self.state_tx.send(State{active_page: ActivePage::HelpPage, ..state.clone()})?,
                                 ActivePage::FileManagerPage => self.state_tx.send(State{active_page: ActivePage::FileManagerPage, ..state.clone()})?,
+                                ActivePage::TransfersPage => self.state_tx.send(State{active_page: ActivePage::TransfersPage, ..state.clone()})?,
                         },
                         Action::FetchLocalData { path} =>
                             self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
@@ -111,8 +119,11 @@ impl StateStore {
                             state.set_s3_loading(true);
                             let _ = self.state_tx.send(state.clone());
                             self.fetch_s3_data(bucket, prefix, s3_data_fetcher.clone(), s3_tx.clone()).await},
-                        Action::MoveBackLocal => self.move_back_local_data(local_data_fetcher.clone(), local_tx.clone()).await,
-                        // Action::MoveBackS3 => self.move_back_s3_data(s3_data_fetcher.clone(), s3_tx.clone()).await
+                        Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
+                        Action::SelectS3Item { item} => {
+                            state.add_s3_selected_item(item);
+                            let _ = self.state_tx.send(state.clone());
+                        }
                     },
 
             // Catch and handle interrupt signal to gracefully shutdown

@@ -7,6 +7,7 @@ use crate::model::state::{ActivePage, State};
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
+use crate::model::s3_selected_item::S3SelectedItem;
 
 #[derive(Clone)]
 struct Props {
@@ -16,6 +17,10 @@ struct Props {
     s3_data: Vec<S3DataItem>,
     s3_history: Vec<NavigationState>,
     s3_loading: bool,
+    s3_selected_items: Vec<S3SelectedItem>,
+    current_local_path: String,
+    current_s3_bucket: String,
+    current_s3_path: String,
 }
 
 impl From<&State> for Props {
@@ -28,6 +33,10 @@ impl From<&State> for Props {
             s3_data: st.s3_data,
             s3_history: Vec::new(),
             s3_loading: st.s3_loading,
+            s3_selected_items: st.s3_selected_items,
+            current_local_path: st.current_local_path,
+            current_s3_bucket: st.current_s3_bucket,
+            current_s3_path: st.current_s3_path,
         }
     }
 }
@@ -104,8 +113,16 @@ impl Component for FileManagerPage {
                     false => self.handle_go_back_local()
                 }
             }
+            KeyCode::Right => {
+                if self.s3_panel_selected {
+                    self.transfer_from_s3_to_local()
+                }
+            }
             KeyCode::Char('?') => {
                 let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
+            }
+            KeyCode::Char('t') => {
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::TransfersPage });
             }
             KeyCode::Tab => {
                 self.s3_panel_selected = !&self.s3_panel_selected;
@@ -155,18 +172,23 @@ impl FileManagerPage {
         table
     }
 
-    fn get_row(item: &S3DataItem) -> Row {
-        if item.is_directory {
+    fn get_row(&self, item: &S3DataItem) -> Row {
+        if Self::find_item(&item, &self.props.s3_selected_items) {
             Row::new(item.to_columns().clone()).bg(Color::LightGreen)
         } else {
             Row::new(item.to_columns().clone())
         }
     }
 
+    fn find_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem]) -> bool {
+        let search_item = S3SelectedItem::from(data_item.clone()); // Convert S3DataItem to S3SelectedItem
+        selected_items.contains(&search_item) // Search for the item in the list
+    }
+
     fn get_s3_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_row(item));
+        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_row(self, item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
@@ -277,12 +299,10 @@ impl FileManagerPage {
     }
 
     fn go_into(&mut self, bucket: Option<String>, prefix: Option<String>) {
-        // println!("stack1: {:?}", self.props.s3_history);
         if let Some(b) = bucket {
             self.props.s3_history.clear();
             self.props.s3_history.push(NavigationState::new(Some(b.clone()), None));
         }
-        // println!("stack2: {:?}", self.props.s3_history);
         if let Some(p) = prefix {
             // Navigate into a new directory within the current bucket
             let current_state = self.current_state().clone();
@@ -292,7 +312,6 @@ impl FileManagerPage {
             };
             self.props.s3_history.push(NavigationState::new(current_state.current_bucket.clone(), Some(new_prefix)));
         }
-        // println!("stack3: {:?}", self.props.s3_history);
     }
 
     fn go_up(&mut self) {
@@ -314,6 +333,25 @@ impl FileManagerPage {
             bucket: self.current_state().current_bucket.clone(),
             prefix: self.current_state().current_prefix.clone(),
         });
+    }
+
+    fn transfer_from_s3_to_local(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+            );
+            let _ = self.action_tx.send(Action::SelectS3Item {
+                item: selected_item
+            });
+        }
     }
 }
 

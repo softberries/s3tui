@@ -8,7 +8,6 @@ use crate::components::component::{Component, ComponentRender};
 use crate::model::state::{ActivePage, State};
 
 struct Props {
-    /// The logged in user
     i: String,
 }
 
@@ -21,9 +20,7 @@ impl From<&State> for Props {
 }
 
 pub struct HelpPage {
-    /// Action sender
     pub action_tx: UnboundedSender<Action>,
-    /// State Mapped ChatPage Props
     props: Props,
 }
 

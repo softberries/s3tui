@@ -1,5 +1,6 @@
 #[derive(Debug, Clone)]
 pub struct S3DataItem {
+    pub bucket: Option<String>,
     pub name: String,
     pub size: String,
     pub file_type: String,
@@ -9,13 +10,16 @@ pub struct S3DataItem {
 }
 
 impl S3DataItem {
-    pub fn init(file_name: String,
-            size: String,
-            file_type: &str,
-            path: &str,
-            is_directory: bool,
-            is_bucket: bool) -> S3DataItem {
+    pub fn init(
+        bucket: Option<String>,
+        file_name: String,
+        size: String,
+        file_type: &str,
+        path: &str,
+        is_directory: bool,
+        is_bucket: bool) -> S3DataItem {
         S3DataItem {
+            bucket,
             name: file_name,
             size,
             file_type: String::from(file_type),
