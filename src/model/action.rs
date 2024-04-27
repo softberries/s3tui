@@ -8,5 +8,6 @@ pub enum Action {
     FetchS3Data { bucket: Option<String>, prefix: Option<String> },
     MoveBackLocal,
     SelectS3Item { item: S3SelectedItem },
+    UnselectS3Item { item: S3SelectedItem },
     Exit,
 }

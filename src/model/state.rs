@@ -24,7 +24,7 @@ pub struct State {
     pub s3_selected_items: Vec<S3SelectedItem>,
     pub current_local_path: String,
     pub current_s3_bucket: String,
-    pub current_s3_path: String
+    pub current_s3_path: String,
 }
 
 impl State {
@@ -48,5 +48,13 @@ impl State {
 
     pub fn add_s3_selected_item(&mut self, item: S3SelectedItem) {
         self.s3_selected_items.push(item);
+    }
+
+    pub fn remove_s3_selected_item(&mut self, item: S3SelectedItem) {
+        self.s3_selected_items.retain(|it|
+            it.bucket != item.bucket ||
+                it.name != item.name ||
+                it.path != item.path
+        );
     }
 }

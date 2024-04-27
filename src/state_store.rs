@@ -92,12 +92,10 @@ impl StateStore {
         let result = loop {
             tokio::select! {
                     Some((_bucket, _prefix, data)) = s3_rx.recv() => {
-                        // Process the list of buckets
                         state.update_buckets(data);
                         self.state_tx.send(state.clone())?;
                     },
                     Some((path, files)) = local_rx.recv() => {
-                        println!("Path: {}", path);
                         state.update_files(path, files);
                         self.state_tx.send(state.clone())?;
                     },
@@ -122,6 +120,10 @@ impl StateStore {
                         Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
                         Action::SelectS3Item { item} => {
                             state.add_s3_selected_item(item);
+                            let _ = self.state_tx.send(state.clone());
+                        },
+                        Action::UnselectS3Item { item} => {
+                            state.remove_s3_selected_item(item);
                             let _ = self.state_tx.send(state.clone());
                         }
                     },

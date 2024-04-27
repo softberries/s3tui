@@ -118,6 +118,11 @@ impl Component for FileManagerPage {
                     self.transfer_from_s3_to_local()
                 }
             }
+            KeyCode::Left => {
+                if self.s3_panel_selected {
+                    self.cancel_transfer_from_s3_to_local()
+                }
+            }
             KeyCode::Char('?') => {
                 let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
             }
@@ -349,6 +354,25 @@ impl FileManagerPage {
                 self.props.current_local_path.clone(),
             );
             let _ = self.action_tx.send(Action::SelectS3Item {
+                item: selected_item
+            });
+        }
+    }
+
+    fn cancel_transfer_from_s3_to_local(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+            );
+            let _ = self.action_tx.send(Action::UnselectS3Item {
                 item: selected_item
             });
         }
