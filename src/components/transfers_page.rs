@@ -84,14 +84,14 @@ impl ComponentRender<()> for TransfersPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Bucket Name", "Resource Path", "Destination"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "IsBucket", "IsDirectory"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.s3_selected_items.iter().map(|item| TransfersPage::get_row(self, item));
-        let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
+        let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
+            .widths(&[Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         frame.render_stateful_widget(&table, frame.size(), &mut self.props.clone().table_state);
     }
 }

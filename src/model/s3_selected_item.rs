@@ -25,7 +25,11 @@ impl S3SelectedItem {
     }
 
     pub fn to_columns(&self) -> Vec<String> {
-        vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone()]
+        if self.is_bucket {
+            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
+        } else {
+            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
+        }
     }
 }
 
@@ -47,9 +51,9 @@ impl PartialEq for S3SelectedItem {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name &&
             self.bucket == other.bucket &&
-        self.path == other.path &&
-        self.is_directory == other.is_directory &&
-        self.is_bucket == other.is_bucket
+            self.path == other.path &&
+            self.is_directory == other.is_directory &&
+            self.is_bucket == other.is_bucket
         // self.destination_dir == other.destination_dir
     }
 }
