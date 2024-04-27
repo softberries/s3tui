@@ -1,4 +1,5 @@
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 
@@ -22,6 +23,7 @@ pub struct State {
     pub s3_data: Vec<S3DataItem>,
     pub s3_loading: bool,
     pub s3_selected_items: Vec<S3SelectedItem>,
+    pub local_selected_items: Vec<LocalSelectedItem>,
     pub current_local_path: String,
     pub current_s3_bucket: String,
     pub current_s3_path: String,
@@ -50,10 +52,21 @@ impl State {
         self.s3_selected_items.push(item);
     }
 
+    pub fn add_local_selected_item(&mut self, item: LocalSelectedItem) {
+        self.local_selected_items.push(item);
+    }
+
     pub fn remove_s3_selected_item(&mut self, item: S3SelectedItem) {
         self.s3_selected_items.retain(|it|
             it.bucket != item.bucket ||
                 it.name != item.name ||
+                it.path != item.path
+        );
+    }
+
+    pub fn remove_local_selected_item(&mut self, item: LocalSelectedItem) {
+        self.local_selected_items.retain(|it|
+            it.name != item.name ||
                 it.path != item.path
         );
     }

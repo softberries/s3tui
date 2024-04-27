@@ -5,6 +5,7 @@ use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
 use crate::model::state::{ActivePage, State};
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
@@ -18,6 +19,7 @@ struct Props {
     s3_history: Vec<NavigationState>,
     s3_loading: bool,
     s3_selected_items: Vec<S3SelectedItem>,
+    local_selected_items: Vec<LocalSelectedItem>,
     current_local_path: String,
     current_s3_bucket: String,
     current_s3_path: String,
@@ -34,6 +36,7 @@ impl From<&State> for Props {
             s3_history: Vec::new(),
             s3_loading: st.s3_loading,
             s3_selected_items: st.s3_selected_items,
+            local_selected_items: st.local_selected_items,
             current_local_path: st.current_local_path,
             current_s3_bucket: st.current_s3_bucket,
             current_s3_path: st.current_s3_path,
@@ -116,11 +119,15 @@ impl Component for FileManagerPage {
             KeyCode::Right => {
                 if self.s3_panel_selected {
                     self.transfer_from_s3_to_local()
+                } else {
+                    self.cancel_transfer_from_local_to_s3()
                 }
             }
             KeyCode::Left => {
                 if self.s3_panel_selected {
                     self.cancel_transfer_from_s3_to_local()
+                } else {
+                    self.transfer_from_local_to_s3()
                 }
             }
             KeyCode::Char('?') => {
@@ -167,7 +174,7 @@ impl FileManagerPage {
     fn get_local_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.local_data.iter().map(|item| Row::new(item.to_columns().clone()));
+        let rows = self.props.local_data.iter().map(|item| FileManagerPage::get_local_row(self, item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
@@ -177,23 +184,36 @@ impl FileManagerPage {
         table
     }
 
-    fn get_row(&self, item: &S3DataItem) -> Row {
-        if Self::find_item(&item, &self.props.s3_selected_items) {
+    fn get_s3_row(&self, item: &S3DataItem) -> Row {
+        if Self::find_s3_item(&item, &self.props.s3_selected_items) {
             Row::new(item.to_columns().clone()).bg(Color::LightGreen)
         } else {
             Row::new(item.to_columns().clone())
         }
     }
 
-    fn find_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem]) -> bool {
+    fn get_local_row(&self, item: &LocalDataItem) -> Row {
+        if Self::find_local_item(&item, &self.props.local_selected_items) {
+            Row::new(item.to_columns().clone()).bg(Color::LightGreen)
+        } else {
+            Row::new(item.to_columns().clone())
+        }
+    }
+
+    fn find_s3_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem]) -> bool {
         let search_item = S3SelectedItem::from(data_item.clone()); // Convert S3DataItem to S3SelectedItem
+        selected_items.contains(&search_item) // Search for the item in the list
+    }
+
+    fn find_local_item(data_item: &LocalDataItem, selected_items: &[LocalSelectedItem]) -> bool {
+        let search_item = LocalSelectedItem::from(data_item.clone());
         selected_items.contains(&search_item) // Search for the item in the list
     }
 
     fn get_s3_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_row(self, item));
+        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_s3_row(self, item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
@@ -359,6 +379,24 @@ impl FileManagerPage {
         }
     }
 
+    fn transfer_from_local_to_s3(&mut self) {
+        if let Some(selected_row) =
+            self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let selected_item = LocalSelectedItem::new(
+                sr.name,
+                sr.path,
+                sr.is_directory,
+                self.props.current_s3_bucket.clone(),
+                self.props.current_s3_path.clone(),
+            );
+            let _ = self.action_tx.send(Action::SelectLocalItem {
+                item: selected_item
+            });
+        }
+    }
+
     fn cancel_transfer_from_s3_to_local(&mut self) {
         if let Some(selected_row) =
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
@@ -373,6 +411,24 @@ impl FileManagerPage {
                 self.props.current_local_path.clone(),
             );
             let _ = self.action_tx.send(Action::UnselectS3Item {
+                item: selected_item
+            });
+        }
+    }
+
+    fn cancel_transfer_from_local_to_s3(&mut self) {
+        if let Some(selected_row) =
+            self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let selected_item = LocalSelectedItem::new(
+                sr.name,
+                sr.path,
+                sr.is_directory,
+                self.props.current_s3_bucket.clone(),
+                self.props.current_s3_path.clone(),
+            );
+            let _ = self.action_tx.send(Action::UnselectLocalItem {
                 item: selected_item
             });
         }

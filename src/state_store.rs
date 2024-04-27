@@ -125,6 +125,14 @@ impl StateStore {
                         Action::UnselectS3Item { item} => {
                             state.remove_s3_selected_item(item);
                             let _ = self.state_tx.send(state.clone());
+                        },
+                        Action::SelectLocalItem { item} => {
+                            state.add_local_selected_item(item);
+                            let _ = self.state_tx.send(state.clone());
+                        },
+                        Action::UnselectLocalItem { item } => {
+                            state.remove_local_selected_item(item);
+                            let _ = self.state_tx.send(state.clone());
                         }
                     },
 
