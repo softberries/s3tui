@@ -25,14 +25,16 @@ pub struct State {
     pub s3_selected_items: Vec<S3SelectedItem>,
     pub local_selected_items: Vec<LocalSelectedItem>,
     pub current_local_path: String,
-    pub current_s3_bucket: String,
-    pub current_s3_path: String,
+    pub current_s3_bucket: Option<String>,
+    pub current_s3_path: Option<String>,
 }
 
 impl State {
-    pub fn update_buckets(&mut self, bucket_list: Vec<S3DataItem>) {
+    pub fn update_buckets(&mut self, bucket: Option<String>, prefix: Option<String>, bucket_list: Vec<S3DataItem>) {
         self.s3_data = bucket_list;
         self.s3_loading = false;
+        self.current_s3_bucket = bucket;
+        self.current_s3_path = prefix;
     }
 
     pub fn update_files(&mut self, path: String, files: Vec<LocalDataItem>) {

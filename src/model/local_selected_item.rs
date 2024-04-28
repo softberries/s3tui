@@ -44,9 +44,9 @@ impl PartialEq for LocalSelectedItem {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name &&
             self.path == other.path &&
-            self.is_directory == other.is_directory &&
-            self.destination_bucket == other.destination_bucket &&
-            self.destination_path == other.destination_path
+            self.is_directory == other.is_directory
+            // self.destination_bucket == other.destination_bucket
+            // self.destination_path == other.destination_path
     }
 }
 // impl Eq for S3SelectedItem {}

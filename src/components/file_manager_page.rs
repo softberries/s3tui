@@ -21,7 +21,7 @@ struct Props {
     s3_selected_items: Vec<S3SelectedItem>,
     local_selected_items: Vec<LocalSelectedItem>,
     current_local_path: String,
-    current_s3_bucket: String,
+    current_s3_bucket: Option<String>,
     current_s3_path: String,
 }
 
@@ -39,7 +39,7 @@ impl From<&State> for Props {
             local_selected_items: st.local_selected_items,
             current_local_path: st.current_local_path,
             current_s3_bucket: st.current_s3_bucket,
-            current_s3_path: st.current_s3_path,
+            current_s3_path: st.current_s3_path.unwrap_or("/".to_string()),
         }
     }
 }
@@ -384,16 +384,21 @@ impl FileManagerPage {
             self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
         {
             let sr = selected_row.clone();
-            let selected_item = LocalSelectedItem::new(
-                sr.name,
-                sr.path,
-                sr.is_directory,
-                self.props.current_s3_bucket.clone(),
-                self.props.current_s3_path.clone(),
-            );
-            let _ = self.action_tx.send(Action::SelectLocalItem {
-                item: selected_item
-            });
+            if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
+                let selected_item = LocalSelectedItem::new(
+                    sr.name,
+                    sr.path,
+                    sr.is_directory,
+                    selected_bucket,
+                    self.props.current_s3_path.clone(),
+                );
+                let _ = self.action_tx.send(Action::SelectLocalItem {
+                    item: selected_item
+                });
+            } else {
+                println!("No bucket selected");
+            }
+
         }
     }
 
@@ -425,7 +430,7 @@ impl FileManagerPage {
                 sr.name,
                 sr.path,
                 sr.is_directory,
-                self.props.current_s3_bucket.clone(),
+                self.props.current_s3_bucket.clone().unwrap_or("?".to_string()), //todo: fix this magic string
                 self.props.current_s3_path.clone(),
             );
             let _ = self.action_tx.send(Action::UnselectLocalItem {

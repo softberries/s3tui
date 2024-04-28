@@ -91,8 +91,8 @@ impl StateStore {
 
         let result = loop {
             tokio::select! {
-                    Some((_bucket, _prefix, data)) = s3_rx.recv() => {
-                        state.update_buckets(data);
+                    Some((bucket, prefix, data)) = s3_rx.recv() => {
+                        state.update_buckets(bucket, prefix, data);
                         self.state_tx.send(state.clone())?;
                     },
                     Some((path, files)) = local_rx.recv() => {
