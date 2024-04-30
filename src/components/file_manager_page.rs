@@ -50,6 +50,7 @@ pub struct FileManagerPage {
     /// State Mapped ChatPage Props
     props: Props,
     s3_panel_selected: bool,
+    show_popup: bool,
     default_navigation_state: NavigationState,
 }
 
@@ -62,6 +63,7 @@ impl Component for FileManagerPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
+            show_popup: false,
             s3_panel_selected: true,
             default_navigation_state: NavigationState::new(None, None),
         }
@@ -113,7 +115,13 @@ impl Component for FileManagerPage {
             KeyCode::Esc => {
                 match self.s3_panel_selected {
                     true => self.handle_go_back_s3(),
-                    false => self.handle_go_back_local()
+                    false => {
+                        if self.show_popup {
+                            self.show_popup = false;
+                        } else {
+                            self.handle_go_back_local()
+                        }
+                    }
                 }
             }
             KeyCode::Right => {
@@ -163,6 +171,26 @@ impl ComponentRender<()> for FileManagerPage {
         }
         let local_table = self.get_local_table(focus_color);
         frame.render_stateful_widget(&local_table, chunks[1], &mut self.props.clone().local_table_state);
+        if self.show_popup {
+            let block = Block::default().title("Problem detected").borders(Borders::ALL).fg(Color::Red);
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area); //this clears out the background
+            frame.render_widget(block, area);
+            // Define the text for the paragraph
+            let text = "   To move data into s3 you need to select at least a bucket to which you want to transfer your files";
+
+            // Create the paragraph widget
+            let paragraph = Paragraph::new(text)
+                .block(Block::default()) // Optional: set another block here if you want borders around the text
+                .alignment(Alignment::Left); // Set text alignment within the paragraph
+
+            // Optionally, adjust the area inside the block for the paragraph content
+            // You might want to shrink the area to leave some padding inside the block borders
+            let inner_area = Rect::new(area.x + 1, area.y + 2, area.width - 2, area.height - 2);
+
+            // Render the paragraph widget
+            frame.render_widget(paragraph, inner_area);
+        }
     }
 }
 
@@ -396,7 +424,7 @@ impl FileManagerPage {
                     item: selected_item
                 });
             } else {
-                println!("No bucket selected");
+                self.show_popup = true;
             }
 
         }
@@ -438,24 +466,20 @@ impl FileManagerPage {
             });
         }
     }
+
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::vertical([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+            .split(r);
+
+        Layout::horizontal([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+            .split(popup_layout[1])[1]
+    }
 }
-
-/*
-let mut navigator = Navigator::new();
-
-// Simulating navigation: first into a bucket
-navigator.go_into(Some("my-bucket".to_string()), None);
-println!("After bucket: {:?}", navigator.current_state());
-
-// Then into a directory
-navigator.go_into(None, Some("first_dir".to_string()));
-println!("After first dir: {:?}", navigator.current_state());
-
-// And deeper into another directory
-navigator.go_into(None, Some("next_dir".to_string()));
-println!("After next dir: {:?}", navigator.current_state());
-
-// Going back up one level
-navigator.go_up();
-println!("After going up: {:?}", navigator.current_state());
- */
