@@ -9,7 +9,7 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
-use crate::model::state::{ActivePage, State};
+use crate::model::state::{State};
 use crate::termination::{Interrupted, Terminator};
 
 pub struct StateStore {
