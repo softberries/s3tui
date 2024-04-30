@@ -6,7 +6,9 @@ use crate::fetchers::local_data_fetcher::LocalDataFetcher;
 use crate::fetchers::s3_data_fetcher::S3DataFetcher;
 use crate::model::action::Action;
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
+use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::termination::{Interrupted, Terminator};
 
@@ -23,6 +25,45 @@ impl StateStore {
 }
 
 impl StateStore {
+    async fn transfer_data(&self, s3_data_fetcher: S3DataFetcher,
+                           s3_selected_items: Vec<S3SelectedItem>,
+                           local_selected_items: Vec<LocalSelectedItem>,
+                           selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
+                           selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>) {
+        for item in s3_selected_items {
+            let tx = selected_s3_transfers_tx.clone();
+            let fetcher = s3_data_fetcher.clone();
+            tokio::spawn(async move {
+                match fetcher.download_item(item.clone()).await {
+                    Ok(_) => {
+                        if tx.send(item.clone()).is_err() {
+                            eprintln!("Failed to send downloaded item");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to download data: {}", e);
+                    }
+                }
+            });
+        }
+
+        for item in local_selected_items {
+            let tx = selected_local_transfers_tx.clone();
+            let fetcher = s3_data_fetcher.clone();
+            tokio::spawn(async move {
+                match fetcher.upload_item(item.clone()).await {
+                    Ok(_) => {
+                        if tx.send(item.clone()).is_err() {
+                            eprintln!("Failed to send uploaded item");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to upload data: {}", e);
+                    }
+                }
+            });
+        }
+    }
     async fn fetch_s3_data(&self, bucket: Option<String>, prefix: Option<String>, s3_data_fetcher: S3DataFetcher, s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
         tokio::spawn(async move {
             match s3_data_fetcher.list_current_location(bucket.clone(), prefix.clone()).await {
@@ -81,6 +122,9 @@ impl StateStore {
 
         let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
+        let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) = mpsc::unbounded_channel::<S3SelectedItem>();
+        let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
+
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
         self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
 
@@ -91,6 +135,14 @@ impl StateStore {
 
         let result = loop {
             tokio::select! {
+                    Some(item) = selected_s3_transfers_rx.recv() => {
+                        state.update_selected_s3_transfers(item);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some(item) = selected_local_transfers_rx.recv() => {
+                        state.update_selected_local_transfers(item);
+                        self.state_tx.send(state.clone())?;
+                    },
                     Some((bucket, prefix, data)) = s3_rx.recv() => {
                         state.update_buckets(bucket, prefix, data);
                         self.state_tx.send(state.clone())?;
@@ -105,12 +157,10 @@ impl StateStore {
 
                             break Interrupted::UserInt;
                         },
-                        Action::Navigate { page} =>
-                            match page {
-                                ActivePage::HelpPage => self.state_tx.send(State{active_page: ActivePage::HelpPage, ..state.clone()})?,
-                                ActivePage::FileManagerPage => self.state_tx.send(State{active_page: ActivePage::FileManagerPage, ..state.clone()})?,
-                                ActivePage::TransfersPage => self.state_tx.send(State{active_page: ActivePage::TransfersPage, ..state.clone()})?,
-                        },
+                        Action::Navigate { page} => {
+                            state.set_active_page(page);
+                            let _ = self.state_tx.send(state.clone());
+                        }
                         Action::FetchLocalData { path} =>
                             self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
                         Action::FetchS3Data { bucket, prefix } => {
@@ -133,6 +183,10 @@ impl StateStore {
                         Action::UnselectLocalItem { item } => {
                             state.remove_local_selected_item(item);
                             let _ = self.state_tx.send(state.clone());
+                        },
+                        Action::RunTransfers => {
+                            let st = state.clone();
+                            self.transfer_data(s3_data_fetcher.clone(), st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone()).await;
                         }
                     },
 

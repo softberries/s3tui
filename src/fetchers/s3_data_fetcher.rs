@@ -2,7 +2,10 @@ use std::path::Path;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{Credentials, Region};
+use rand::Rng;
+use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
+use crate::model::s3_selected_item::S3SelectedItem;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
@@ -21,6 +24,23 @@ impl S3DataFetcher {
             "manual", // Source, just a label for debugging
         );
         S3DataFetcher { credentials }
+    }
+
+    async fn get_random_number() -> u64 {
+        // Tokio does not prevent you from using `rand::thread_rng()` in async functions
+        let mut rng = rand::thread_rng(); // Local RNG for the current thread
+        rng.gen_range(1..=20) // Generates a random number between 1 and 20
+    }
+    pub async fn upload_item(&self, _item: LocalSelectedItem) -> anyhow::Result<bool> {
+        let number = Self::get_random_number().await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(number)).await;
+        Ok(true)
+    }
+
+    pub async fn download_item(&self, _item: S3SelectedItem) -> anyhow::Result<bool> {
+        let number = Self::get_random_number().await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(number)).await;
+        Ok(true)
     }
 
     pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {

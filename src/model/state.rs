@@ -30,6 +30,25 @@ pub struct State {
 }
 
 impl State {
+    pub fn set_active_page(&mut self, page: ActivePage) {
+        self.active_page = page;
+    }
+    pub fn update_selected_s3_transfers(&mut self, item: S3SelectedItem) {
+        //todo: update state of selected item instead of removing it
+        self.s3_selected_items.retain(|it|
+            it.bucket != item.bucket ||
+                it.name != item.name ||
+                it.path != item.path
+        );
+    }
+
+    pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
+        //todo: update state of selected item instead of removing it
+        self.local_selected_items.retain(|it|
+            it.name != item.name ||
+                it.path != item.path
+        );
+    }
     pub fn update_buckets(&mut self, bucket: Option<String>, prefix: Option<String>, bucket_list: Vec<S3DataItem>) {
         self.s3_data = bucket_list;
         self.s3_loading = false;

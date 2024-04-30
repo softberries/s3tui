@@ -12,5 +12,6 @@ pub enum Action {
     UnselectS3Item { item: S3SelectedItem },
     SelectLocalItem { item: LocalSelectedItem },
     UnselectLocalItem { item: LocalSelectedItem },
+    RunTransfers,
     Exit,
 }

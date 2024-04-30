@@ -65,6 +65,9 @@ impl Component for TransfersPage {
         }
 
         match key.code {
+            KeyCode::Char('r') => {
+                let _ = self.action_tx.send(Action::RunTransfers);
+            }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
@@ -95,7 +98,7 @@ impl TransfersPage {
         let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List").fg(Color::White))
+            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths(&[Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
@@ -109,7 +112,7 @@ impl TransfersPage {
         let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List").fg(Color::White))
+            .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths(&[Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
