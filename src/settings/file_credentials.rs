@@ -9,14 +9,18 @@ pub struct FileCredential {
     pub name: String,
     pub access_key: String,
     pub secret_key: String,
-    pub selected: bool
+    pub selected: bool,
 }
 
 pub fn load_credentials() -> anyhow::Result<Vec<FileCredential>> {
     let path = get_credentials_dir()?;
+    load_credentials_from_dir(path.as_path())
+}
+
+fn load_credentials_from_dir(dir_path: &Path) -> anyhow::Result<Vec<FileCredential>> {
     let mut credentials = Vec::new();
     let mut selected = true;
-    for entry in fs::read_dir(path)? {
+    for entry in fs::read_dir(dir_path)? {
         let entry = entry?;
         let path = entry.path();
 
@@ -30,8 +34,7 @@ pub fn load_credentials() -> anyhow::Result<Vec<FileCredential>> {
                 secret_key,
                 selected,
             });
-            //only the first entry will be selected by default
-            selected = false;
+            selected = false; // Only the first entry is selected
         }
     }
 
@@ -66,4 +69,71 @@ fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String)> {
     }
 
     Ok((access_key, secret_key))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    fn setup_test_credentials(dir: &Path, file_name: &str) -> io::Result<()> {
+        let file_path = dir.join(file_name);
+        let mut file = fs::File::create(file_path)?;
+        writeln!(file, "access_key=AKIAIOSFODNN7EXAMPLE")?;
+        writeln!(file, "secret_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_credential_file() {
+        let dir = tempdir().unwrap();
+        setup_test_credentials(dir.path(), "cred1").unwrap();
+
+        let file_path = dir.path().join("cred1");
+        let (access_key, secret_key) = parse_credential_file(&file_path).unwrap();
+
+        assert_eq!(access_key, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(secret_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    }
+
+    #[test]
+    fn test_load_credentials_no_files() {
+        let dir = tempdir().unwrap();
+        let creds = load_credentials_from_dir(dir.path()).unwrap();
+
+        assert!(creds.is_empty());
+    }
+
+    #[test]
+    fn test_load_credentials_with_files() {
+        let dir = tempdir().unwrap();
+        setup_test_credentials(dir.path(),"cred1").unwrap();
+
+        let creds = load_credentials_from_dir(dir.path()).unwrap();
+
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds[0].name, "cred1");
+        assert!(creds[0].selected);
+    }
+
+    #[test]
+    fn test_load_credentials_with_files_only_one_set_as_selected() {
+        let dir = tempdir().unwrap();
+        setup_test_credentials(dir.path(), "cred1").unwrap();
+        setup_test_credentials(dir.path(), "cred2").unwrap();
+        setup_test_credentials(dir.path(), "cred3").unwrap();
+
+        let creds = load_credentials_from_dir(dir.path()).unwrap();
+        let selected_count = count_selected_credentials(&creds);
+        assert_eq!(selected_count, 1);
+        assert_eq!(creds.len(), 3);
+    }
+
+    fn count_selected_credentials(credentials: &[FileCredential]) -> usize {
+        credentials.iter()
+            .filter(|cred| cred.selected)
+            .count()
+    }
+
 }
