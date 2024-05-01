@@ -6,3 +6,13 @@
 This is a simple TUI S3 client and serves mostly as a learing resource for my Rust journey. Most of the code is in the prototyping statge as I'm looking for best solutions and quickest ones interchangably. Use on your own risk.
 
 
+![s3tui](assets/s3tui.jpeg)
+
+## Setup
+
+Add at least one configuration file under your `$HOME/.s3tui/creds` directory with the format like:
+```text
+access_key=YOUR_S3_ACCESS_KEY
+secret_key=YOUR_S3_SECRET_ACCESS_KEY
+```
+Name the file as you wish, save and quit.
