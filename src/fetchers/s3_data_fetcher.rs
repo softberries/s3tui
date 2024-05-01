@@ -6,6 +6,7 @@ use rand::Rng;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::settings::file_credentials::FileCredential;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
@@ -13,9 +14,9 @@ pub struct S3DataFetcher {
 }
 
 impl S3DataFetcher {
-    pub fn new() -> Self {
-        let access_key = "YOUR_ACCESS_KEY";
-        let secret_access_key = "YOUR_SECRET_KEY";
+    pub fn new(creds: FileCredential) -> Self {
+        let access_key = creds.access_key;
+        let secret_access_key = creds.secret_key;
         let credentials = Credentials::new(
             access_key,
             secret_access_key,

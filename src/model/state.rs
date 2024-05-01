@@ -2,6 +2,7 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::settings::file_credentials::FileCredential;
 
 #[derive(Debug, Clone)]
 pub enum ActivePage {
@@ -27,9 +28,17 @@ pub struct State {
     pub current_local_path: String,
     pub current_s3_bucket: Option<String>,
     pub current_s3_path: Option<String>,
+    pub creds: Vec<FileCredential>,
 }
 
 impl State {
+    pub fn new(creds: Vec<FileCredential>) -> State {
+        let st = State::default();
+        State {
+            creds: creds,
+            ..st
+        }
+    }
     pub fn set_active_page(&mut self, page: ActivePage) {
         self.active_page = page;
     }

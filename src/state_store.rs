@@ -10,6 +10,7 @@ use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{State};
+use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
 
 pub struct StateStore {
@@ -108,15 +109,24 @@ impl StateStore {
         });
     }
 
+    fn get_s3_data_fetcher(creds: Vec<FileCredential>) -> S3DataFetcher {
+        if let Some(cred) = creds.iter().find(|cred| cred.selected) {
+            S3DataFetcher::new(cred.to_owned())
+        } else {
+            panic!("No default file credential found!")
+        }
+    }
+
     pub async fn main_loop(
         self,
         mut terminator: Terminator,
         mut action_rx: UnboundedReceiver<Action>,
         mut interrupt_rx: broadcast::Receiver<Interrupted>,
+        creds: Vec<FileCredential>,
     ) -> anyhow::Result<Interrupted> {
-        let s3_data_fetcher = S3DataFetcher::new();
+        let s3_data_fetcher = Self::get_s3_data_fetcher(creds.clone());
         let local_data_fetcher = LocalDataFetcher::new();
-        let mut state = State::default();
+        let mut state = State::new(creds.clone());
         state.set_s3_loading(true);
         state.set_current_local_path(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string());
 
