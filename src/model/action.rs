@@ -2,7 +2,7 @@ use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::state::ActivePage;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Navigate { page: ActivePage },
     FetchLocalData { path: String },

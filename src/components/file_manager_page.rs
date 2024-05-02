@@ -144,6 +144,9 @@ impl Component for FileManagerPage {
             KeyCode::Char('t') => {
                 let _ = self.action_tx.send(Action::Navigate { page: ActivePage::TransfersPage });
             }
+            KeyCode::Char('s') => {
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3CredsPage });
+            }
             KeyCode::Tab => {
                 self.s3_panel_selected = !&self.s3_panel_selected;
             }

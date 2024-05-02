@@ -4,10 +4,11 @@ use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ActivePage {
     FileManagerPage,
     TransfersPage,
+    S3CredsPage,
     HelpPage,
 }
 
@@ -29,15 +30,25 @@ pub struct State {
     pub current_s3_bucket: Option<String>,
     pub current_s3_path: Option<String>,
     pub creds: Vec<FileCredential>,
+    pub current_creds: FileCredential
 }
 
 impl State {
     pub fn new(creds: Vec<FileCredential>) -> State {
         let st = State::default();
-        State {
-            creds: creds,
-            ..st
+        if let Some(current_creds) = creds.iter().find(|cred| cred.selected) {
+            State {
+                creds: creds.clone(),
+                current_creds: current_creds.to_owned(),
+                ..st
+            }
+        } else {
+            State {
+                creds: creds.clone(),
+                ..st
+            }
         }
+
     }
     pub fn set_active_page(&mut self, page: ActivePage) {
         self.active_page = page;
