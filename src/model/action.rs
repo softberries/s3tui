@@ -1,6 +1,7 @@
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::state::ActivePage;
+use crate::settings::file_credentials::FileCredential;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -12,6 +13,7 @@ pub enum Action {
     UnselectS3Item { item: S3SelectedItem },
     SelectLocalItem { item: LocalSelectedItem },
     UnselectLocalItem { item: LocalSelectedItem },
+    SelectCurrentS3Creds { item: FileCredential },
     RunTransfers,
     Exit,
 }

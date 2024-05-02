@@ -111,4 +111,15 @@ impl State {
                 it.path != item.path
         );
     }
+
+    pub fn set_current_s3_creds(&mut self, item: FileCredential) {
+        for cred in self.creds.iter_mut() {
+            if cred.name == item.name {
+                cred.selected = true;
+                self.current_creds = cred.clone();
+            } else {
+                cred.selected = false;
+            }
+        }
+    }
 }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::bail;
 use directories::UserDirs;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileCredential {
     pub name: String,
     pub access_key: String,

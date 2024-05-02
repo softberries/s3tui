@@ -109,6 +109,9 @@ impl StateStore {
         });
     }
 
+    fn get_current_s3_fetcher(state: &State) -> S3DataFetcher {
+        S3DataFetcher::new(state.current_creds.clone())
+    }
     pub async fn main_loop(
         self,
         mut terminator: Terminator,
@@ -118,7 +121,7 @@ impl StateStore {
     ) -> anyhow::Result<Interrupted> {
         let local_data_fetcher = LocalDataFetcher::new();
         let mut state = State::new(creds.clone());
-        let s3_data_fetcher = S3DataFetcher::new(state.current_creds.clone());
+        let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
         state.set_s3_loading(true);
         state.set_current_local_path(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string());
 
@@ -168,7 +171,8 @@ impl StateStore {
                         Action::FetchS3Data { bucket, prefix } => {
                             state.set_s3_loading(true);
                             let _ = self.state_tx.send(state.clone());
-                            self.fetch_s3_data(bucket, prefix, s3_data_fetcher.clone(), s3_tx.clone()).await},
+                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                            self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await},
                         Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
                         Action::SelectS3Item { item} => {
                             state.add_s3_selected_item(item);
@@ -188,7 +192,14 @@ impl StateStore {
                         },
                         Action::RunTransfers => {
                             let st = state.clone();
-                            self.transfer_data(s3_data_fetcher.clone(), st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone()).await;
+                            let s3_data_fetcher = Self::get_current_s3_fetcher(&st);
+                            self.transfer_data(s3_data_fetcher, st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone()).await;
+                        },
+                        Action::SelectCurrentS3Creds { item} => {
+                            state.set_current_s3_creds(item);
+                            let _ = self.state_tx.send(state.clone());
+                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                            self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
                         }
                     },
 

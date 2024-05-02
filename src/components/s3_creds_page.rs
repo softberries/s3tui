@@ -9,7 +9,7 @@ use crate::settings::file_credentials::FileCredential;
 #[derive(Clone)]
 struct Props {
     s3_table_state: TableState,
-    s3_selected_items: Vec<FileCredential>,
+    s3_data: Vec<FileCredential>,
 }
 
 impl From<&State> for Props {
@@ -17,7 +17,7 @@ impl From<&State> for Props {
         let st = state.clone();
         Props {
             s3_table_state: TableState::default(),
-            s3_selected_items: st.creds,
+            s3_data: st.creds,
         }
     }
 }
@@ -60,8 +60,14 @@ impl Component for S3CredsPage {
         }
 
         match key.code {
-            KeyCode::Char('r') => {
-                let _ = self.action_tx.send(Action::RunTransfers);
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.move_down_s3_table_selection()
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.move_up_s3_table_selection()
+            }
+            KeyCode::Enter => {
+                self.set_current_s3_account()
             }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
@@ -90,7 +96,7 @@ impl S3CredsPage {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
             Row::new(vec!["Account Name"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_selected_items.iter().map(|item| S3CredsPage::get_s3_row(self, item));
+        let rows = self.props.s3_data.iter().map(|item| S3CredsPage::get_s3_row(self, item));
         let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
@@ -98,6 +104,45 @@ impl S3CredsPage {
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths(&[Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
+    }
+
+    pub fn move_up_s3_table_selection(&mut self) {
+        let i = match self.props.s3_table_state.selected() {
+            Some(i) => {
+                if i == 0_usize {
+                    self.props.s3_data.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.props.s3_table_state.select(Some(i));
+    }
+
+    pub fn move_down_s3_table_selection(&mut self) {
+        let i = match self.props.s3_table_state.selected() {
+            Some(i) => {
+                if i >= self.props.s3_data.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.props.s3_table_state.select(Some(i));
+    }
+
+    pub fn set_current_s3_account(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let _ = self.action_tx.send(Action::SelectCurrentS3Creds {
+                item: sr.clone()
+            });
+        }
     }
 
 }
