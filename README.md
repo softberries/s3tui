@@ -16,3 +16,6 @@ access_key=YOUR_S3_ACCESS_KEY
 secret_key=YOUR_S3_SECRET_ACCESS_KEY
 ```
 Name the file as you wish, save and quit.
+
+## Usage
+Press `?` for available commands, and `q` to quit.

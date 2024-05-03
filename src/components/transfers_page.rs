@@ -68,6 +68,9 @@ impl Component for TransfersPage {
             KeyCode::Char('r') => {
                 let _ = self.action_tx.send(Action::RunTransfers);
             }
+            KeyCode::Char('s') => {
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3CredsPage });
+            }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
