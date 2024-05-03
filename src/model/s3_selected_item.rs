@@ -1,4 +1,5 @@
 use crate::model::s3_data_item::S3DataItem;
+use crate::settings::file_credentials::FileCredential;
 
 #[derive(Debug, Clone)]
 pub struct S3SelectedItem {
@@ -9,10 +10,11 @@ pub struct S3SelectedItem {
     pub is_bucket: bool,
     pub destination_dir: String,
     pub transferred: bool,
+    pub s3_creds: FileCredential,
 }
 
 impl S3SelectedItem {
-    pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String) -> S3SelectedItem {
+    pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String, s3_creds: FileCredential) -> S3SelectedItem {
         S3SelectedItem {
             bucket,
             name,
@@ -21,20 +23,19 @@ impl S3SelectedItem {
             is_bucket,
             destination_dir,
             transferred: false,
+            s3_creds,
         }
     }
 
     pub fn to_columns(&self) -> Vec<String> {
         if self.is_bucket {
-            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
+            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.s3_creds.name.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
         } else {
-            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
+            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.s3_creds.name.clone(), self.is_bucket.to_string(), self.is_directory.to_string()]
         }
     }
-}
 
-impl From<S3DataItem> for S3SelectedItem {
-    fn from(item: S3DataItem) -> Self {
+    pub fn from_s3_data_item(item: S3DataItem, creds: FileCredential) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
             name: item.name,
@@ -43,9 +44,11 @@ impl From<S3DataItem> for S3SelectedItem {
             is_bucket: item.is_bucket,
             destination_dir: String::new(), // Or provide a default value or additional context if needed
             transferred: false, // Default value since it's not part of S3DataItem
+            s3_creds: creds,
         }
     }
 }
+
 
 impl PartialEq for S3SelectedItem {
     fn eq(&self, other: &Self) -> bool {
