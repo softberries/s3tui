@@ -20,6 +20,7 @@ config = "0.14.0"
 futures = "0.3.30"
 rand = "0.8.5"
 directories = "5.0.1"
+aws-smithy-types = "1.1.8"
 
 [dev-dependencies]
 tempfile = "3.2.0"

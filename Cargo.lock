@@ -1837,6 +1837,7 @@ dependencies = [
  "anyhow",
  "aws-config",
  "aws-sdk-s3",
+ "aws-smithy-types",
  "color-eyre",
  "config",
  "crossterm",

@@ -1,8 +1,10 @@
-use std::path::Path;
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{Credentials, Region};
-use rand::Rng;
+use aws_smithy_types::byte_stream::ByteStream;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
@@ -12,6 +14,14 @@ use crate::settings::file_credentials::FileCredential;
 pub struct S3DataFetcher {
     credentials: Credentials,
 }
+
+/*
+- Handle buckets from different regions
+- fix upload/download functions to handled dirs/buckets
+- report progress on upload/download operations
+- add create/delete buckets
+- add copy files within a bucket
+ */
 
 impl S3DataFetcher {
     pub fn new(creds: FileCredential) -> Self {
@@ -27,20 +37,62 @@ impl S3DataFetcher {
         S3DataFetcher { credentials }
     }
 
-    async fn get_random_number() -> u64 {
-        // Tokio does not prevent you from using `rand::thread_rng()` in async functions
-        let mut rng = rand::thread_rng(); // Local RNG for the current thread
-        rng.gen_range(1..=20) // Generates a random number between 1 and 20
-    }
-    pub async fn upload_item(&self, _item: LocalSelectedItem) -> anyhow::Result<bool> {
-        let number = Self::get_random_number().await;
-        tokio::time::sleep(tokio::time::Duration::from_secs(number)).await;
+    /*
+    this function handles only simple files as of now.
+    - not tested with larger ones,
+    - not sure when and if necessary to use multipart uploads,
+    - no progress reported to transfers page
+    - no directory handling
+     */
+    pub async fn upload_item(&self, item: LocalSelectedItem) -> anyhow::Result<bool> {
+        let client = self.get_s3_client().await;
+        let body = ByteStream::read_from()
+            .path(item.path)
+            // todo: add progress tracking
+            // https://github.com/awslabs/aws-sdk-rust/blob/main/examples/examples/s3/src/bin/put-object-progress.rs
+            // Artificially limit the buffer size to ensure the file has multiple
+            // progress steps.
+            .buffer_size(2048)
+            .build()
+            .await?;
+
+        let request = client
+            .put_object()
+            .bucket(item.destination_bucket)
+            .key(item.name)
+            .body(body);
+
+        let _out = request.send().await?;
+
         Ok(true)
     }
 
-    pub async fn download_item(&self, _item: S3SelectedItem) -> anyhow::Result<bool> {
-        let number = Self::get_random_number().await;
-        tokio::time::sleep(tokio::time::Duration::from_secs(number)).await;
+    /*
+    this function handles only simple files as of now.
+    - not tested with larger files,
+    - no progress reported to transfers page
+    - no directory or full bucket handling
+    */
+    pub async fn download_item(&self, item: S3SelectedItem) -> anyhow::Result<bool> {
+        let client = self.get_s3_client().await;
+        let mut path = PathBuf::from(item.destination_dir);
+        path.push(item.name.clone());
+        let mut file = File::create(&path)?;
+
+        let mut object = client
+            .get_object()
+            .bucket(item.bucket.expect("bucket must be defined").clone())
+            .key(item.name.clone())
+            .send()
+            .await?;
+
+        let mut _byte_count = 0_usize;
+        while let Some(bytes) = object.body.try_next().await? {
+            let bytes_len = bytes.len();
+            file.write_all(&bytes)?;
+            // trace!("Intermediate write of {bytes_len}");
+            _byte_count += bytes_len;
+        }
         Ok(true)
     }
 
