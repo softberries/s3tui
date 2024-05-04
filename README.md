@@ -14,6 +14,7 @@ Add at least one configuration file under your `$HOME/.s3tui/creds` directory wi
 ```text
 access_key=YOUR_S3_ACCESS_KEY
 secret_key=YOUR_S3_SECRET_ACCESS_KEY
+default_region=AWS_REGION_NAME
 ```
 Name the file as you wish, save and quit.
 

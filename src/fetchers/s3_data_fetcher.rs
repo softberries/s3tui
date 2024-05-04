@@ -12,6 +12,7 @@ use crate::settings::file_credentials::FileCredential;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
+    default_region: String,
     credentials: Credentials,
 }
 
@@ -27,6 +28,7 @@ impl S3DataFetcher {
     pub fn new(creds: FileCredential) -> Self {
         let access_key = creds.access_key;
         let secret_access_key = creds.secret_key;
+        let default_region = creds.default_region;
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
@@ -34,7 +36,7 @@ impl S3DataFetcher {
             None, // Expiry time, if applicable
             "manual", // Source, just a label for debugging
         );
-        S3DataFetcher { credentials }
+        S3DataFetcher { default_region, credentials }
     }
 
     /*
@@ -45,7 +47,7 @@ impl S3DataFetcher {
     - no directory handling
      */
     pub async fn upload_item(&self, item: LocalSelectedItem) -> anyhow::Result<bool> {
-        let client = self.get_s3_client().await;
+        let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
             // todo: add progress tracking
@@ -74,7 +76,7 @@ impl S3DataFetcher {
     - no directory or full bucket handling
     */
     pub async fn download_item(&self, item: S3SelectedItem) -> anyhow::Result<bool> {
-        let client = self.get_s3_client().await;
+        let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
         path.push(item.name.clone());
         let mut file = File::create(&path)?;
@@ -105,7 +107,7 @@ impl S3DataFetcher {
         }
     }
     async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
-        let client = self.get_s3_client().await;
+        let client = self.get_s3_client(None).await;
         let mut all_objects = Vec::new();
         let mut response = client
             .list_objects_v2()
@@ -146,7 +148,7 @@ impl S3DataFetcher {
 
     // Example async method to fetch data from an external service
     async fn list_buckets(&self) -> anyhow::Result<Vec<S3DataItem>> {
-        let client = self.get_s3_client().await;
+        let client = self.get_s3_client(None).await;
         let res = client.list_buckets().send().await;
         let fetched_data: Vec<S3DataItem>;
         match res {
@@ -169,9 +171,25 @@ impl S3DataFetcher {
         Ok(fetched_data)
     }
 
-    async fn get_s3_client(&self) -> Client {
-        let credentials = self.credentials.clone();
-        let region_provider = RegionProviderChain::first_try(Region::new("eu-west-1"))
+    async fn get_s3_client(&self, creds: Option<FileCredential>) -> Client {
+        let credentials: Credentials;
+        let default_region: String;
+        if let Some(crd) = creds {
+            let access_key = crd.access_key;
+            let secret_access_key = crd.secret_key;
+            default_region = crd.default_region;
+            credentials = Credentials::new(
+                access_key,
+                secret_access_key,
+                None, // Token, if using temporary credentials (like STS)
+                None, // Expiry time, if applicable
+                "manual", // Source, just a label for debugging
+            );
+        } else {
+            credentials = self.credentials.clone();
+            default_region = self.default_region.clone();
+        }
+        let region_provider = RegionProviderChain::first_try(Region::new(default_region))
             .or_default_provider()
             .or_else(Region::new("eu-north-1"));
         let shared_config = aws_config::from_env().credentials_provider(credentials).region(region_provider).load().await;

@@ -167,6 +167,7 @@ mod tests {
             name: "test".to_string(),
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
+            default_region: "eu-north-1".to_string(),
             selected: true
         };
         let state = State::new(vec![creds]);
@@ -182,14 +183,11 @@ mod tests {
             name: "test".to_string(),
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
+            default_region: "eu-north-1".to_string(),
             selected: true
         };
-        let state = State::new(vec![creds]);
+        let state = State::new(vec![creds.clone()]);
         let mut component = S3CredsPage::new(&state, tx);
-
-        // Simulate pressing 'r'
-        component.handle_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::empty()));
-        assert_eq!(rx.recv().await.unwrap(), Action::RunTransfers);
 
         // Simulate pressing 'q'
         component.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()));

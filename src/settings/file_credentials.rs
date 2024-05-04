@@ -9,6 +9,7 @@ pub struct FileCredential {
     pub name: String,
     pub access_key: String,
     pub secret_key: String,
+    pub default_region: String,
     pub selected: bool,
 }
 
@@ -26,12 +27,13 @@ fn load_credentials_from_dir(dir_path: &Path) -> anyhow::Result<Vec<FileCredenti
 
         if path.is_file() {
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let (access_key, secret_key) = parse_credential_file(&path)?;
+            let (access_key, secret_key, default_region) = parse_credential_file(&path)?;
 
             credentials.push(FileCredential {
                 name,
                 access_key,
                 secret_key,
+                default_region,
                 selected,
             });
             selected = false; // Only the first entry is selected
@@ -49,11 +51,12 @@ fn get_credentials_dir() -> anyhow::Result<PathBuf> {
     Ok(creds_dir)
 }
 
-fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String)> {
+fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String, String)> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
     let mut access_key = String::new();
     let mut secret_key = String::new();
+    let mut default_region = String::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -61,14 +64,16 @@ fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String)> {
             access_key = line["access_key=".len()..].trim().to_string();
         } else if line.starts_with("secret_key=") {
             secret_key = line["secret_key=".len()..].trim().to_string();
+        } else if line.starts_with("default_region=") {
+            default_region = line["default_region=".len()..].trim().to_string();
         }
     }
 
-    if access_key.is_empty() || secret_key.is_empty() {
-        bail!("Missing access_key or secret_key in file: {:?}", path);
+    if access_key.is_empty() || secret_key.is_empty() || default_region.is_empty() {
+        bail!("Missing access_key/secret_key/default_region in file: {:?}", path);
     }
 
-    Ok((access_key, secret_key))
+    Ok((access_key, secret_key, default_region))
 }
 
 #[cfg(test)]
@@ -82,6 +87,7 @@ mod tests {
         let mut file = fs::File::create(file_path)?;
         writeln!(file, "access_key=AKIAIOSFODNN7EXAMPLE")?;
         writeln!(file, "secret_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")?;
+        writeln!(file, "default_region=eu-north-1")?;
         Ok(())
     }
 
@@ -91,10 +97,11 @@ mod tests {
         setup_test_credentials(dir.path(), "cred1").unwrap();
 
         let file_path = dir.path().join("cred1");
-        let (access_key, secret_key) = parse_credential_file(&file_path).unwrap();
+        let (access_key, secret_key, default_region) = parse_credential_file(&file_path).unwrap();
 
         assert_eq!(access_key, "AKIAIOSFODNN7EXAMPLE");
         assert_eq!(secret_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(default_region, "eu-north-1");
     }
 
     #[test]
@@ -108,7 +115,7 @@ mod tests {
     #[test]
     fn test_load_credentials_with_files() {
         let dir = tempdir().unwrap();
-        setup_test_credentials(dir.path(),"cred1").unwrap();
+        setup_test_credentials(dir.path(), "cred1").unwrap();
 
         let creds = load_credentials_from_dir(dir.path()).unwrap();
 
@@ -135,5 +142,4 @@ mod tests {
             .filter(|cred| cred.selected)
             .count()
     }
-
 }
