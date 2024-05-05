@@ -5,9 +5,10 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::fetchers::local_data_fetcher::LocalDataFetcher;
 use crate::fetchers::s3_data_fetcher::S3DataFetcher;
 use crate::model::action::Action;
+use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::progress_item::ProgressItem;
+use crate::model::upload_progress_item::UploadProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
@@ -32,12 +33,14 @@ impl StateStore {
                            local_selected_items: Vec<LocalSelectedItem>,
                            selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
                            selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>,
-                           upload_tx: UnboundedSender<ProgressItem>) {
+                           upload_tx: UnboundedSender<UploadProgressItem>,
+                           download_tx: UnboundedSender<DownloadProgressItem>) {
         for item in s3_selected_items {
             let tx = selected_s3_transfers_tx.clone();
+            let down_tx = download_tx.clone();
             let fetcher = s3_data_fetcher.clone();
             tokio::spawn(async move {
-                match fetcher.download_item(item.clone()).await {
+                match fetcher.download_item(item.clone(), down_tx).await {
                     Ok(_) => {
                         if tx.send(item.clone()).is_err() {
                             eprintln!("Failed to send downloaded item");
@@ -133,7 +136,8 @@ impl StateStore {
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) = mpsc::unbounded_channel::<S3SelectedItem>();
         let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
-        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<ProgressItem>();
+        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<UploadProgressItem>();
+        let (download_tx, mut download_rx) = mpsc::unbounded_channel::<DownloadProgressItem>();
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
         self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
@@ -180,9 +184,12 @@ impl StateStore {
                             let _ = self.state_tx.send(state.clone());
                         },
                         Action::RunTransfers => {
+                            state.remove_already_transferred_items();
                             let st = state.clone();
                             let s3_data_fetcher = Self::get_current_s3_fetcher(&st);
-                            self.transfer_data(s3_data_fetcher, st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone(), upload_tx.clone()).await;
+                            self.transfer_data(s3_data_fetcher, st.s3_selected_items, st.local_selected_items, 
+                            selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone(), 
+                            upload_tx.clone(), download_tx.clone()).await;
                         },
                         Action::SelectCurrentS3Creds { item} => {
                             state.set_current_s3_creds(item);
@@ -210,6 +217,12 @@ impl StateStore {
                     Some(item) = upload_rx.recv() => {
                         if state.active_page == ActivePage::Transfers {
                             state.update_progress_on_selected_local_item(item);
+                            self.state_tx.send(state.clone())?;
+                        }
+                    },
+                    Some(item) = download_rx.recv() => {
+                        if state.active_page == ActivePage::Transfers {
+                            state.update_progress_on_selected_s3_item(item);
                             self.state_tx.send(state.clone())?;
                         }
                     },

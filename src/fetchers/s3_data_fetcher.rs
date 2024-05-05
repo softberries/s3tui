@@ -22,7 +22,8 @@ use aws_sdk_s3::{
 };
 use bytes::Bytes;
 use http_body::{Body, SizeHint};
-use crate::model::progress_item::ProgressItem;
+use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::upload_progress_item::UploadProgressItem;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
@@ -33,7 +34,7 @@ pub struct S3DataFetcher {
 struct ProgressTracker {
     bytes_written: u64,
     content_length: u64,
-    progress_sender: UnboundedSender<ProgressItem>,
+    progress_sender: UnboundedSender<UploadProgressItem>,
     uri: String,
 }
 
@@ -41,7 +42,7 @@ impl ProgressTracker {
     fn track(&mut self, len: u64) {
         self.bytes_written += len;
         let progress = self.bytes_written as f64 / self.content_length as f64;
-        let progress_item = ProgressItem {
+        let progress_item = UploadProgressItem {
             progress: progress * 100.0,
             uri: self.uri.clone(),
         };
@@ -64,7 +65,7 @@ impl ProgressBody<SdkBody> {
     // swap out the current body for a fresh, empty body and then provides ::from_dyn()
     // to get an SdkBody back from the ProgressBody it created. http::Body does not have
     // this "change the wheels on the fly" utility.
-    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<ProgressItem>) -> Result<Request<SdkBody>, Infallible> {
+    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<UploadProgressItem>) -> Result<Request<SdkBody>, Infallible> {
         let uri = value.uri().to_string();
         let value = value.map(|body| {
             let len = body.content_length().expect("upload body sized");
@@ -80,7 +81,7 @@ impl<InnerBody> ProgressBody<InnerBody>
     where
         InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
 {
-    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<ProgressItem>) -> Self {
+    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<UploadProgressItem>) -> Self {
         Self {
             inner: body,
             progress_tracker: ProgressTracker {
@@ -164,7 +165,7 @@ impl S3DataFetcher {
     - no progress reported to transfers page
     - no directory handling
      */
-    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<ProgressItem>) -> anyhow::Result<bool> {
+    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<UploadProgressItem>) -> anyhow::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
@@ -196,27 +197,49 @@ impl S3DataFetcher {
     - no progress reported to transfers page
     - no directory or full bucket handling
     */
-    pub async fn download_item(&self, item: S3SelectedItem) -> anyhow::Result<bool> {
+    pub async fn download_item(&self, item: S3SelectedItem, download_tx: UnboundedSender<DownloadProgressItem>) -> anyhow::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
         path.push(item.name.clone());
         let mut file = File::create(&path)?;
-
+        let bucket = item.bucket.expect("bucket must be defined").clone();
+        let head_obj = client
+            .head_object()
+            .bucket(bucket.clone())
+            .key(item.name.clone())
+            .send()
+            .await?;
         let mut object = client
             .get_object()
-            .bucket(item.bucket.expect("bucket must be defined").clone())
+            .bucket(bucket.clone())
             .key(item.name.clone())
             .send()
             .await?;
 
-        let mut _byte_count = 0_usize;
+        let mut byte_count = 0_usize;
+        let total = head_obj.content_length.unwrap_or(0i64);
         while let Some(bytes) = object.body.try_next().await? {
             let bytes_len = bytes.len();
             file.write_all(&bytes)?;
             // trace!("Intermediate write of {bytes_len}");
-            _byte_count += bytes_len;
+            byte_count += bytes_len;
+            let progress = Self::calculate_download_percentage(total, byte_count);
+            let download_progress_item = DownloadProgressItem {
+                name: item.name.clone(),
+                bucket: bucket.clone(),
+                progress: progress
+            };
+            let _ = download_tx.send(download_progress_item);
         }
         Ok(true)
+    }
+
+    fn calculate_download_percentage(total: i64, byte_count: usize) -> f64 {
+        if total == 0 {
+            0.0 // Return 0% if total is 0 to avoid division by zero
+        } else {
+            (byte_count as f64 / total as f64) * 100.0 // Cast to f64 to ensure floating-point division
+        }
     }
 
     pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {

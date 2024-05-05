@@ -1,7 +1,8 @@
 use url::Url;
+use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::progress_item::ProgressItem;
+use crate::model::upload_progress_item::UploadProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
@@ -51,20 +52,28 @@ impl State {
         self.active_page = page;
     }
     pub fn update_selected_s3_transfers(&mut self, item: S3SelectedItem) {
-        //todo: update state of selected item instead of removing it
+        for it in self.s3_selected_items.iter_mut() {
+            if it.name == item.name {
+                it.transferred = true;
+            }
+        }
+    }
+
+    pub fn remove_already_transferred_items(&mut self) {
         self.s3_selected_items.retain(|it|
-            it.bucket != item.bucket ||
-                it.name != item.name ||
-                it.path != item.path
+            !it.transferred
+        );
+        self.local_selected_items.retain(|it|
+            !it.transferred
         );
     }
 
     pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
-        //todo: update state of selected item instead of removing it
-        self.local_selected_items.retain(|it|
-            it.name != item.name ||
-                it.path != item.path
-        );
+        for it in self.local_selected_items.iter_mut() {
+            if it.name == item.name {
+                it.transferred = true;
+            }
+        }
     }
     pub fn update_buckets(&mut self, bucket: Option<String>, prefix: Option<String>, bucket_list: Vec<S3DataItem>) {
         self.s3_data = bucket_list;
@@ -124,7 +133,7 @@ impl State {
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
      */
-    fn update_item_by_url(selected_items: &mut [LocalSelectedItem], progress_item: ProgressItem) {
+    fn update_local_item_with_progress(selected_items: &mut [LocalSelectedItem], progress_item: UploadProgressItem) {
         let url = match Url::parse(progress_item.uri.as_str()) {
             Ok(url) => url,
             Err(_) => return, // Exit the function if URL parsing fails
@@ -145,8 +154,20 @@ impl State {
         }
     }
 
-    pub fn update_progress_on_selected_local_item(&mut self, item: ProgressItem) {
-        Self::update_item_by_url(&mut self.local_selected_items, item.clone());
+    fn update_s3_item_with_progress(selected_items: &mut [S3SelectedItem], progress_item: DownloadProgressItem) {
+        for item in selected_items.iter_mut() {
+            if item.name == progress_item.name && item.bucket == Some(progress_item.bucket.clone()) {
+                item.progress = progress_item.progress;
+            }
+        }
+    }
+
+    pub fn update_progress_on_selected_local_item(&mut self, item: UploadProgressItem) {
+        Self::update_local_item_with_progress(&mut self.local_selected_items, item.clone());
+    }
+
+    pub fn update_progress_on_selected_s3_item(&mut self, item: DownloadProgressItem) {
+        Self::update_s3_item_with_progress(&mut self.s3_selected_items, item.clone());
     }
 }
 
@@ -189,6 +210,7 @@ mod tests {
             destination_dir: "".to_string(),
             transferred: false,
             s3_creds: Default::default(),
+            progress: 0f64,
         };
 
         state.add_s3_selected_item(item.clone());
@@ -214,7 +236,7 @@ mod tests {
         };
 
         state.local_selected_items.push(selected_item.clone());
-        let progress_item = ProgressItem {
+        let progress_item = UploadProgressItem {
             progress: 0.5,
             uri: "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into()
         };

@@ -87,23 +87,31 @@ impl Component for TransfersPage {
 
 impl TransfersPage {
     fn get_s3_row(&self, item: &S3SelectedItem) -> Row {
-        Row::new(item.to_columns().clone())
+        if item.transferred {
+            Row::new(item.to_columns().clone()).fg(Color::Blue)
+        } else {
+            Row::new(item.to_columns().clone())
+        }
     }
     fn get_local_row(&self, item: &LocalSelectedItem) -> Row {
-        Row::new(item.to_columns().clone())
+        if item.transferred {
+            Row::new(item.to_columns().clone()).fg(Color::Blue)
+        } else {
+            Row::new(item.to_columns().clone())
+        }
     }
 
     fn get_s3_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "S3 Account", "IsBucket", "IsDirectory"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "S3 Account", "IsBucket", "IsDirectory", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.s3_selected_items.iter().map(|item| TransfersPage::get_s3_row(self, item));
-        let widths = [Constraint::Length(10), Constraint::Length(30), Constraint::Length(30), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
+        let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(10), Constraint::Percentage(30), Constraint::Percentage(30), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .widths(&[Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
 
