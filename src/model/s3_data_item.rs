@@ -7,6 +7,7 @@ pub struct S3DataItem {
     pub path: String,
     pub is_directory: bool,
     pub is_bucket: bool,
+    pub region: Option<String>,
 }
 
 impl S3DataItem {
@@ -17,7 +18,8 @@ impl S3DataItem {
         file_type: &str,
         path: &str,
         is_directory: bool,
-        is_bucket: bool) -> S3DataItem {
+        is_bucket: bool,
+        region: Option<String>) -> S3DataItem {
         S3DataItem {
             bucket,
             name: file_name,
@@ -26,6 +28,7 @@ impl S3DataItem {
             path: String::from(path),
             is_directory,
             is_bucket,
+            region,
         }
     }
     pub fn to_columns(&self) -> Vec<String> {

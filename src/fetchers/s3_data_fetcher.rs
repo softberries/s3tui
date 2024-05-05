@@ -138,7 +138,6 @@ impl<InnerBody> Body for ProgressBody<InnerBody>
 /*
 - Handle buckets from different regions
 - fix upload/download functions to handled dirs/buckets
-- report progress on upload/download operations
 - add create/delete buckets
 - add copy files within a bucket
  */
@@ -160,9 +159,7 @@ impl S3DataFetcher {
 
     /*
     this function handles only simple files as of now.
-    - not tested with larger ones,
     - not sure when and if necessary to use multipart uploads,
-    - no progress reported to transfers page
     - no directory handling
      */
     pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<UploadProgressItem>) -> anyhow::Result<bool> {
@@ -193,8 +190,6 @@ impl S3DataFetcher {
 
     /*
     this function handles only simple files as of now.
-    - not tested with larger files,
-    - no progress reported to transfers page
     - no directory or full bucket handling
     */
     pub async fn download_item(&self, item: S3SelectedItem, download_tx: UnboundedSender<DownloadProgressItem>) -> anyhow::Result<bool> {
@@ -227,7 +222,7 @@ impl S3DataFetcher {
             let download_progress_item = DownloadProgressItem {
                 name: item.name.clone(),
                 bucket: bucket.clone(),
-                progress: progress
+                progress: progress,
             };
             let _ = download_tx.send(download_progress_item);
         }
@@ -252,8 +247,21 @@ impl S3DataFetcher {
     }
     async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client(None).await;
+        let head_obj = client
+            .get_bucket_location()
+            .bucket(bucket)
+            .send()
+            .await?;
         let mut all_objects = Vec::new();
-        let mut response = client
+        let location = head_obj.location_constraint().map(|lc| lc.to_string()).map_or_else(
+            || None, // This function is used if the option is None, which it isn't in this case.
+            |s| if s.is_empty() { Some("us-east-1".to_string()) } else { Some(s) },
+        );
+        let creds = self.credentials.clone();
+        let default_region = self.default_region.clone();
+        let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone().unwrap_or(default_region), selected: false };
+        let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
+        let mut response = client_with_location
             .list_objects_v2()
             .delimiter("/")
             .set_prefix(prefix)
@@ -274,11 +282,11 @@ impl S3DataFetcher {
                         let file_extension = path.extension()
                             .and_then(|ext| ext.to_str()) // Convert the OsStr to a &str
                             .unwrap_or("");
-                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), size, file_extension, "", false, false));
+                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), size, file_extension, "", false, false, location.clone()));
                     }
                     for object in output.common_prefixes() {
                         let key = object.prefix().unwrap_or_default();
-                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), "".to_string(), "Dir", key, true, false));
+                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), "".to_string(), "Dir", key, true, false, location.clone()));
                     }
                 }
                 Err(err) => {
@@ -301,7 +309,7 @@ impl S3DataFetcher {
                     buckets.iter().filter_map(|bucket| {
                         // Filter out buckets where name is None, and map those with a name to a Vec<String>
                         //vec![name.clone()]
-                        bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true))
+                        bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true, None))
                     }).collect()
                 },
             )

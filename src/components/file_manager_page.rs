@@ -214,12 +214,12 @@ impl FileManagerPage {
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Local List").fg(self.get_home_local_color()))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
+            .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
 
     fn get_s3_row(&self, item: &S3DataItem) -> Row {
-        if Self::find_s3_item(&item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
+        if Self::contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
             Row::new(item.to_columns().clone()).bg(Color::LightGreen)
         } else {
             Row::new(item.to_columns().clone())
@@ -227,19 +227,19 @@ impl FileManagerPage {
     }
 
     fn get_local_row(&self, item: &LocalDataItem) -> Row {
-        if Self::find_local_item(&item, &self.props.local_selected_items, &self.props.current_s3_creds) {
+        if Self::contains_local_item(item, &self.props.local_selected_items, &self.props.current_s3_creds) {
             Row::new(item.to_columns().clone()).bg(Color::LightGreen)
         } else {
             Row::new(item.to_columns().clone())
         }
     }
 
-    fn find_s3_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem], s3_creds: &FileCredential) -> bool {
+    fn contains_s3_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem], s3_creds: &FileCredential) -> bool {
         let search_item = S3SelectedItem::from_s3_data_item(data_item.clone(), s3_creds.clone()); // Convert S3DataItem to S3SelectedItem
         selected_items.contains(&search_item) // Search for the item in the list
     }
 
-    fn find_local_item(data_item: &LocalDataItem, selected_items: &[LocalSelectedItem], s3_creds: &FileCredential) -> bool {
+    fn contains_local_item(data_item: &LocalDataItem, selected_items: &[LocalSelectedItem], s3_creds: &FileCredential) -> bool {
         let search_item = LocalSelectedItem::from_local_data_item(data_item.clone(), s3_creds.clone());
         selected_items.contains(&search_item) // Search for the item in the list
     }
@@ -253,7 +253,7 @@ impl FileManagerPage {
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("S3 List").fg(self.get_home_s3_color()))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
+            .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
 
@@ -399,6 +399,11 @@ impl FileManagerPage {
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
         {
             let sr = selected_row.clone();
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
             let selected_item = S3SelectedItem::new(
                 sr.name,
                 sr.bucket,
@@ -406,7 +411,7 @@ impl FileManagerPage {
                 sr.is_directory,
                 sr.is_bucket,
                 self.props.current_local_path.clone(),
-                self.props.current_s3_creds.clone(),
+                creds,
             );
             let _ = self.action_tx.send(Action::SelectS3Item {
                 item: selected_item
@@ -466,9 +471,9 @@ impl FileManagerPage {
                 sr.name,
                 sr.path,
                 sr.is_directory,
-                self.props.current_s3_bucket.clone().unwrap_or("?".to_string()), //todo: fix this magic string
+                self.props.current_s3_bucket.clone().expect("Bucket has to be set for the selected item"),
                 self.props.current_s3_path.clone(),
-                self.props.current_s3_creds.clone()
+                self.props.current_s3_creds.clone(),
             );
             let _ = self.action_tx.send(Action::UnselectLocalItem {
                 item: selected_item
