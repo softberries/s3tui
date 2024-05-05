@@ -1,14 +1,28 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_s3::Client;
+use std::path::{Path};
 use aws_sdk_s3::config::{Credentials, Region};
-use aws_smithy_types::byte_stream::ByteStream;
+use tokio::sync::mpsc::UnboundedSender;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
+use aws_smithy_runtime_api::http::Request;
+use std::{
+    convert::Infallible,
+    path::PathBuf,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
+use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_s3::{
+    primitives::{ByteStream, SdkBody},
+    Client,
+};
+use bytes::Bytes;
+use http_body::{Body, SizeHint};
+use std::time::{Instant, Duration};
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
@@ -16,6 +30,114 @@ pub struct S3DataFetcher {
     credentials: Credentials,
 }
 
+struct ProgressTracker {
+    bytes_written: u64,
+    content_length: u64,
+    progress_sender: UnboundedSender<(u64, f64, String)>,
+    uri: String,
+    last_send_time: Instant,
+}
+
+impl ProgressTracker {
+    fn track(&mut self, len: u64) {
+        self.bytes_written += len;
+        let progress = self.bytes_written as f64 / self.content_length as f64;
+        // Check if at least one second has passed since the last send
+        if self.last_send_time.elapsed() >= Duration::from_secs(1) {
+            // let _ = self.progress_sender.send((len, progress * 100.0, self.uri.clone()));
+            self.last_send_time = Instant::now(); // Update the last send time
+        }
+        let _ = self.progress_sender.send((len, progress * 100.0, self.uri.clone()));
+        // println!("Read {} bytes, progress: {:.2}%", len, progress * 100.0);
+    }
+}
+
+#[pin_project::pin_project]
+pub struct ProgressBody<InnerBody> {
+    #[pin]
+    inner: InnerBody,
+    // prograss_tracker is a separate field so it can be accessed as &mut.
+    progress_tracker: ProgressTracker,
+}
+
+// For an SdkBody specifically, the ProgressTracker swap itself in-place while customizing the SDK operation.
+impl ProgressBody<SdkBody> {
+    // Wrap a Requests's SdkBody with a new ProgressBody, and replace it on the fly.
+    // This is specialized for SdkBody specifically, as SdkBody provides ::taken() to
+    // swap out the current body for a fresh, empty body and then provides ::from_dyn()
+    // to get an SdkBody back from the ProgressBody it created. http::Body does not have
+    // this "change the wheels on the fly" utility.
+    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<(u64, f64, String)>) -> Result<Request<SdkBody>, Infallible> {
+        let uri = value.uri().to_string();
+        let value = value.map(|body| {
+            let len = body.content_length().expect("upload body sized");
+            let cloned_uri = uri.clone();
+            let body = ProgressBody::new(body, len, cloned_uri, tx.clone());
+            SdkBody::from_body_0_4(body)
+        });
+        Ok(value)
+    }
+}
+
+impl<InnerBody> ProgressBody<InnerBody>
+    where
+        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
+{
+    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<(u64, f64, String)>) -> Self {
+        Self {
+            inner: body,
+            progress_tracker: ProgressTracker {
+                bytes_written: 0,
+                content_length,
+                progress_sender: tx,
+                uri: uri.to_string(),
+                last_send_time: Instant::now() - Duration::from_secs(1),
+            },
+        }
+    }
+}
+
+impl<InnerBody> Body for ProgressBody<InnerBody>
+    where
+        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
+{
+    type Data = Bytes;
+
+    type Error = aws_smithy_types::body::Error;
+
+    // Our poll_data delegates to the inner poll_data, but needs a project() to
+    // get there. When the poll has data, it updates the progress_tracker.
+    fn poll_data(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        let this = self.project();
+        match this.inner.poll_data(cx) {
+            Poll::Ready(Some(Ok(data))) => {
+                this.progress_tracker.track(data.len() as u64);
+                Poll::Ready(Some(Ok(data)))
+            }
+            Poll::Ready(None) => {
+                tracing::debug!("done");
+                Poll::Ready(None)
+            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    // Delegate utilities to inner and progress_tracker.
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+        self.project().inner.poll_trailers(cx)
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        SizeHint::with_exact(self.progress_tracker.content_length)
+    }
+}
 /*
 - Handle buckets from different regions
 - fix upload/download functions to handled dirs/buckets
@@ -46,15 +168,14 @@ impl S3DataFetcher {
     - no progress reported to transfers page
     - no directory handling
      */
-    pub async fn upload_item(&self, item: LocalSelectedItem) -> anyhow::Result<bool> {
+    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<(u64, f64, String)>) -> anyhow::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
-            // todo: add progress tracking
             // https://github.com/awslabs/aws-sdk-rust/blob/main/examples/examples/s3/src/bin/put-object-progress.rs
             // Artificially limit the buffer size to ensure the file has multiple
             // progress steps.
-            .buffer_size(2048)
+            // .buffer_size(2048)
             .build()
             .await?;
 
@@ -64,7 +185,11 @@ impl S3DataFetcher {
             .key(item.name)
             .body(body);
 
-        let _out = request.send().await?;
+        let customized = request
+            .customize()
+            .map_request(move |req| ProgressBody::<SdkBody>::replace(req, upload_tx.clone()));
+
+        let _out = customized.send().await?;
 
         Ok(true)
     }

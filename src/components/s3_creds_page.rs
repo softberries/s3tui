@@ -73,10 +73,10 @@ impl Component for S3CredsPage {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
             }
             KeyCode::Esc => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManagerPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManager });
             }
             _ => {}
         }

@@ -69,16 +69,16 @@ impl Component for TransfersPage {
                 let _ = self.action_tx.send(Action::RunTransfers);
             }
             KeyCode::Char('s') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3CredsPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3Creds });
             }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
             }
             KeyCode::Esc => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManagerPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManager });
             }
             _ => {}
         }
@@ -110,14 +110,14 @@ impl TransfersPage {
     fn get_local_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "IsDirectory"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "IsDirectory", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.local_selected_items.iter().map(|item| TransfersPage::get_local_row(self, item));
-        let widths = [Constraint::Length(10), Constraint::Length(30), Constraint::Length(30), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
+        let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(10), Constraint::Percentage(30), Constraint::Percentage(30), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .widths(&[Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
 }

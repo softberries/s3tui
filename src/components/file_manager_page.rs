@@ -142,13 +142,13 @@ impl Component for FileManagerPage {
                 }
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::HelpPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
             }
             KeyCode::Char('t') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::TransfersPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Transfers });
             }
             KeyCode::Char('s') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3CredsPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3Creds });
             }
             KeyCode::Tab => {
                 self.s3_panel_selected = !&self.s3_panel_selected;

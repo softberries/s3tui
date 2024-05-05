@@ -88,7 +88,7 @@ impl Component for HelpPage {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Esc => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManagerPage });
+                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManager });
             }
             _ => {}
         }

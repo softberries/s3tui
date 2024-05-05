@@ -10,6 +10,8 @@ pub struct LocalSelectedItem {
     pub destination_path: String,
     pub transferred: bool,
     pub s3_creds: FileCredential,
+    pub total: u64,
+    pub progress: f64
 }
 
 impl LocalSelectedItem {
@@ -22,6 +24,8 @@ impl LocalSelectedItem {
             destination_path,
             transferred: false,
             s3_creds,
+            total: 0u64,
+            progress: 0f64,
         }
     }
 
@@ -34,11 +38,14 @@ impl LocalSelectedItem {
             destination_path: String::new(),
             transferred: false,
             s3_creds: s3_creds,
+            total: 0u64,
+            progress: 0f64,
         }
     }
 
     pub fn to_columns(&self) -> Vec<String> {
-        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), self.is_directory.to_string()]
+        let progress = format!("{:.2}%", self.progress);
+        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), self.is_directory.to_string(), progress]
     }
 }
 

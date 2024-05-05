@@ -9,7 +9,7 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
-use crate::model::state::{State};
+use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
 
@@ -30,7 +30,8 @@ impl StateStore {
                            s3_selected_items: Vec<S3SelectedItem>,
                            local_selected_items: Vec<LocalSelectedItem>,
                            selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
-                           selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>) {
+                           selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>,
+                           upload_tx: UnboundedSender<(u64, f64, String)>) {
         for item in s3_selected_items {
             let tx = selected_s3_transfers_tx.clone();
             let fetcher = s3_data_fetcher.clone();
@@ -49,12 +50,13 @@ impl StateStore {
         }
 
         for item in local_selected_items {
-            let tx = selected_local_transfers_tx.clone();
+            let local_tx = selected_local_transfers_tx.clone();
+            let up_tx = upload_tx.clone();
             let fetcher = s3_data_fetcher.clone();
             tokio::spawn(async move {
-                match fetcher.upload_item(item.clone()).await {
+                match fetcher.upload_item(item.clone(), up_tx).await {
                     Ok(_) => {
-                        if tx.send(item.clone()).is_err() {
+                        if local_tx.send(item.clone()).is_err() {
                             eprintln!("Failed to send uploaded item");
                         }
                     }
@@ -112,6 +114,7 @@ impl StateStore {
     fn get_current_s3_fetcher(state: &State) -> S3DataFetcher {
         S3DataFetcher::new(state.current_creds.clone())
     }
+
     pub async fn main_loop(
         self,
         mut terminator: Terminator,
@@ -129,6 +132,7 @@ impl StateStore {
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) = mpsc::unbounded_channel::<S3SelectedItem>();
         let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
+        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<(u64, f64, String)>();
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
         self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
@@ -140,22 +144,6 @@ impl StateStore {
 
         let result = loop {
             tokio::select! {
-                    Some(item) = selected_s3_transfers_rx.recv() => {
-                        state.update_selected_s3_transfers(item);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some(item) = selected_local_transfers_rx.recv() => {
-                        state.update_selected_local_transfers(item);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some((bucket, prefix, data)) = s3_rx.recv() => {
-                        state.update_buckets(bucket, prefix, data);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some((path, files)) = local_rx.recv() => {
-                        state.update_files(path, files);
-                        self.state_tx.send(state.clone())?;
-                    },
                     Some(action) = action_rx.recv() => match action {
                         Action::Exit => {
                             let _ = terminator.terminate(Interrupted::UserInt);
@@ -193,13 +181,35 @@ impl StateStore {
                         Action::RunTransfers => {
                             let st = state.clone();
                             let s3_data_fetcher = Self::get_current_s3_fetcher(&st);
-                            self.transfer_data(s3_data_fetcher, st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone()).await;
+                            self.transfer_data(s3_data_fetcher, st.s3_selected_items, st.local_selected_items, selected_s3_transfers_tx.clone(), selected_local_transfers_tx.clone(), upload_tx.clone()).await;
                         },
                         Action::SelectCurrentS3Creds { item} => {
                             state.set_current_s3_creds(item);
                             let _ = self.state_tx.send(state.clone());
                             let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                             self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
+                        }
+                    },
+                    Some(item) = selected_s3_transfers_rx.recv() => {
+                        state.update_selected_s3_transfers(item);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some(item) = selected_local_transfers_rx.recv() => {
+                        state.update_selected_local_transfers(item);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some((bucket, prefix, data)) = s3_rx.recv() => {
+                        state.update_buckets(bucket, prefix, data);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some((path, files)) = local_rx.recv() => {
+                        state.update_files(path, files);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some(item) = upload_rx.recv() => {
+                        if state.active_page == ActivePage::Transfers {
+                            state.update_progress_on_selected_local_item(item);
+                            self.state_tx.send(state.clone())?;
                         }
                     },
 

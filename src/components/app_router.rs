@@ -34,19 +34,19 @@ pub struct AppRouter {
 impl AppRouter {
     fn get_active_page_component(&self) -> &dyn Component {
         match self.props.active_page {
-            ActivePage::FileManagerPage => &self.file_manager_page,
-            ActivePage::HelpPage => &self.help_page,
-            ActivePage::TransfersPage => &self.transfers_page,
-            ActivePage::S3CredsPage => &self.s3_creds_page,
+            ActivePage::FileManager => &self.file_manager_page,
+            ActivePage::Help => &self.help_page,
+            ActivePage::Transfers => &self.transfers_page,
+            ActivePage::S3Creds => &self.s3_creds_page,
         }
     }
 
     fn get_active_page_component_mut(&mut self) -> &mut dyn Component {
         match self.props.active_page {
-            ActivePage::FileManagerPage => &mut self.file_manager_page,
-            ActivePage::HelpPage => &mut self.help_page,
-            ActivePage::TransfersPage => &mut self.transfers_page,
-            ActivePage::S3CredsPage => &mut self.s3_creds_page,
+            ActivePage::FileManager => &mut self.file_manager_page,
+            ActivePage::Help => &mut self.help_page,
+            ActivePage::Transfers => &mut self.transfers_page,
+            ActivePage::S3Creds => &mut self.s3_creds_page,
         }
     }
 }
@@ -94,10 +94,10 @@ impl Component for AppRouter {
 impl ComponentRender<()> for AppRouter {
     fn render(&self, frame: &mut Frame, props: ()) {
         match self.props.active_page {
-            ActivePage::FileManagerPage => self.file_manager_page.render(frame, props),
-            ActivePage::HelpPage => self.help_page.render(frame, props),
-            ActivePage::TransfersPage => self.transfers_page.render(frame, props),
-            ActivePage::S3CredsPage => self.s3_creds_page.render(frame, props),
+            ActivePage::FileManager => self.file_manager_page.render(frame, props),
+            ActivePage::Help => self.help_page.render(frame, props),
+            ActivePage::Transfers => self.transfers_page.render(frame, props),
+            ActivePage::S3Creds => self.s3_creds_page.render(frame, props),
         }
     }
 }
