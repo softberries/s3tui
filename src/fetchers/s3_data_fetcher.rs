@@ -22,7 +22,7 @@ use aws_sdk_s3::{
 };
 use bytes::Bytes;
 use http_body::{Body, SizeHint};
-use std::time::{Instant, Duration};
+use crate::model::progress_item::ProgressItem;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
@@ -33,22 +33,19 @@ pub struct S3DataFetcher {
 struct ProgressTracker {
     bytes_written: u64,
     content_length: u64,
-    progress_sender: UnboundedSender<(u64, f64, String)>,
+    progress_sender: UnboundedSender<ProgressItem>,
     uri: String,
-    last_send_time: Instant,
 }
 
 impl ProgressTracker {
     fn track(&mut self, len: u64) {
         self.bytes_written += len;
         let progress = self.bytes_written as f64 / self.content_length as f64;
-        // Check if at least one second has passed since the last send
-        if self.last_send_time.elapsed() >= Duration::from_secs(1) {
-            // let _ = self.progress_sender.send((len, progress * 100.0, self.uri.clone()));
-            self.last_send_time = Instant::now(); // Update the last send time
-        }
-        let _ = self.progress_sender.send((len, progress * 100.0, self.uri.clone()));
-        // println!("Read {} bytes, progress: {:.2}%", len, progress * 100.0);
+        let progress_item = ProgressItem {
+            progress: progress * 100.0,
+            uri: self.uri.clone(),
+        };
+        let _ = self.progress_sender.send(progress_item);
     }
 }
 
@@ -56,18 +53,18 @@ impl ProgressTracker {
 pub struct ProgressBody<InnerBody> {
     #[pin]
     inner: InnerBody,
-    // prograss_tracker is a separate field so it can be accessed as &mut.
+    // progress_tracker is a separate field, so it can be accessed as &mut.
     progress_tracker: ProgressTracker,
 }
 
 // For an SdkBody specifically, the ProgressTracker swap itself in-place while customizing the SDK operation.
 impl ProgressBody<SdkBody> {
-    // Wrap a Requests's SdkBody with a new ProgressBody, and replace it on the fly.
+    // Wrap a Requests SdkBody with a new ProgressBody, and replace it on the fly.
     // This is specialized for SdkBody specifically, as SdkBody provides ::taken() to
     // swap out the current body for a fresh, empty body and then provides ::from_dyn()
     // to get an SdkBody back from the ProgressBody it created. http::Body does not have
     // this "change the wheels on the fly" utility.
-    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<(u64, f64, String)>) -> Result<Request<SdkBody>, Infallible> {
+    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<ProgressItem>) -> Result<Request<SdkBody>, Infallible> {
         let uri = value.uri().to_string();
         let value = value.map(|body| {
             let len = body.content_length().expect("upload body sized");
@@ -83,7 +80,7 @@ impl<InnerBody> ProgressBody<InnerBody>
     where
         InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
 {
-    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<(u64, f64, String)>) -> Self {
+    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<ProgressItem>) -> Self {
         Self {
             inner: body,
             progress_tracker: ProgressTracker {
@@ -91,7 +88,6 @@ impl<InnerBody> ProgressBody<InnerBody>
                 content_length,
                 progress_sender: tx,
                 uri: uri.to_string(),
-                last_send_time: Instant::now() - Duration::from_secs(1),
             },
         }
     }
@@ -134,7 +130,7 @@ impl<InnerBody> Body for ProgressBody<InnerBody>
         self.project().inner.poll_trailers(cx)
     }
 
-    fn size_hint(&self) -> http_body::SizeHint {
+    fn size_hint(&self) -> SizeHint {
         SizeHint::with_exact(self.progress_tracker.content_length)
     }
 }
@@ -168,7 +164,7 @@ impl S3DataFetcher {
     - no progress reported to transfers page
     - no directory handling
      */
-    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<(u64, f64, String)>) -> anyhow::Result<bool> {
+    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<ProgressItem>) -> anyhow::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
@@ -274,24 +270,18 @@ impl S3DataFetcher {
     // Example async method to fetch data from an external service
     async fn list_buckets(&self) -> anyhow::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client(None).await;
-        let res = client.list_buckets().send().await;
-        let fetched_data: Vec<S3DataItem>;
-        match res {
-            Ok(res) => {
-                fetched_data = res.buckets.as_ref().map_or_else(
-                    Vec::new, // In case there is no buckets field (it's None), return an empty Vec
-                    |buckets| {
-                        buckets.iter().filter_map(|bucket| {
-                            // Filter out buckets where name is None, and map those with a name to a Vec<String>
-                            //vec![name.clone()]
-                            bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true))
-                        }).collect()
-                    },
-                )
-            }
-            _ => {
-                fetched_data = vec![]
-            }
+        let mut fetched_data: Vec<S3DataItem> = vec![];
+        if let Ok(res) = client.list_buckets().send().await {
+            fetched_data = res.buckets.as_ref().map_or_else(
+                Vec::new, // In case there is no buckets field (it's None), return an empty Vec
+                |buckets| {
+                    buckets.iter().filter_map(|bucket| {
+                        // Filter out buckets where name is None, and map those with a name to a Vec<String>
+                        //vec![name.clone()]
+                        bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true))
+                    }).collect()
+                },
+            )
         }
         Ok(fetched_data)
     }
@@ -318,7 +308,6 @@ impl S3DataFetcher {
             .or_default_provider()
             .or_else(Region::new("eu-north-1"));
         let shared_config = aws_config::from_env().credentials_provider(credentials).region(region_provider).load().await;
-        let client = Client::new(&shared_config);
-        client
+        Client::new(&shared_config)
     }
 }

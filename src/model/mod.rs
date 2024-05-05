@@ -5,3 +5,4 @@ pub mod local_data_item;
 pub mod navigation_state;
 pub mod s3_selected_item;
 pub mod local_selected_item;
+pub mod progress_item;

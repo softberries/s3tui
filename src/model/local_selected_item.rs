@@ -10,7 +10,6 @@ pub struct LocalSelectedItem {
     pub destination_path: String,
     pub transferred: bool,
     pub s3_creds: FileCredential,
-    pub total: u64,
     pub progress: f64
 }
 
@@ -24,7 +23,6 @@ impl LocalSelectedItem {
             destination_path,
             transferred: false,
             s3_creds,
-            total: 0u64,
             progress: 0f64,
         }
     }
@@ -38,7 +36,6 @@ impl LocalSelectedItem {
             destination_path: String::new(),
             transferred: false,
             s3_creds: s3_creds,
-            total: 0u64,
             progress: 0f64,
         }
     }

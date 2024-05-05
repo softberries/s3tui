@@ -7,6 +7,7 @@ use crate::fetchers::s3_data_fetcher::S3DataFetcher;
 use crate::model::action::Action;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
+use crate::model::progress_item::ProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
@@ -31,7 +32,7 @@ impl StateStore {
                            local_selected_items: Vec<LocalSelectedItem>,
                            selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
                            selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>,
-                           upload_tx: UnboundedSender<(u64, f64, String)>) {
+                           upload_tx: UnboundedSender<ProgressItem>) {
         for item in s3_selected_items {
             let tx = selected_s3_transfers_tx.clone();
             let fetcher = s3_data_fetcher.clone();
@@ -132,7 +133,7 @@ impl StateStore {
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) = mpsc::unbounded_channel::<S3SelectedItem>();
         let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
-        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<(u64, f64, String)>();
+        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<ProgressItem>();
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
         self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;

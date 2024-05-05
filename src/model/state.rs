@@ -1,6 +1,7 @@
 use url::Url;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
+use crate::model::progress_item::ProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
@@ -123,8 +124,8 @@ impl State {
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
      */
-    fn update_item_by_url(selected_items: &mut [LocalSelectedItem], total: u64, progress: f64, url_str: String) {
-        let url = match Url::parse(url_str.as_str()) {
+    fn update_item_by_url(selected_items: &mut [LocalSelectedItem], progress_item: ProgressItem) {
+        let url = match Url::parse(progress_item.uri.as_str()) {
             Ok(url) => url,
             Err(_) => return, // Exit the function if URL parsing fails
         };
@@ -139,15 +140,13 @@ impl State {
 
         for item in selected_items.iter_mut() {
             if &item.destination_bucket == bucket_name && &item.name == name {
-                item.total = total;
-                item.progress = progress;
+                item.progress = progress_item.progress;
             }
         }
     }
 
-    pub fn update_progress_on_selected_local_item(&mut self, item: (u64, f64, String)) {
-        let (total, progress, uri) = item;
-        Self::update_item_by_url(&mut self.local_selected_items, total, progress, uri);
+    pub fn update_progress_on_selected_local_item(&mut self, item: ProgressItem) {
+        Self::update_item_by_url(&mut self.local_selected_items, item.clone());
     }
 }
 
@@ -209,17 +208,18 @@ mod tests {
             transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            total: 0,
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
         };
 
         state.local_selected_items.push(selected_item.clone());
-
-        state.update_progress_on_selected_local_item((100, 0.5, "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into()));
-
-        assert_eq!(state.local_selected_items[0].total, 100);
+        let progress_item = ProgressItem {
+            progress: 0.5,
+            uri: "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into()
+        };
+        state.update_progress_on_selected_local_item(progress_item);
+        
         assert_eq!(state.local_selected_items[0].progress, 0.5);
     }
 }
