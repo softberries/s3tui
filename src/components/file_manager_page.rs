@@ -374,7 +374,7 @@ impl FileManagerPage {
     }
 
     fn go_up(&mut self) {
-        if self.props.s3_history.len() > 0 {
+        if !self.props.s3_history.is_empty() {
             self.props.s3_history.pop();
         }
     }

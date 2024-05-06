@@ -134,21 +134,45 @@ impl ComponentRender<()> for TransfersPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
         let s3_table = self.get_s3_table();
         let local_table = self.get_local_table();
-
+        let size = frame.size();
         match (self.props.local_selected_items.is_empty(), self.props.s3_selected_items.is_empty()) {
             (false, false) => {
                 let chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(frame.size());
+                    .split(size);
                 frame.render_stateful_widget(&s3_table, chunks[0], &mut self.props.clone().s3_table_state);
                 frame.render_stateful_widget(&local_table, chunks[1], &mut self.props.clone().local_table_state);
             }
             (false, true) => frame.render_stateful_widget(&local_table, frame.size(), &mut self.props.clone().local_table_state),
             (true, false) => frame.render_stateful_widget(&s3_table, frame.size(), &mut self.props.clone().s3_table_state),
             (true, true) => {
-                let info = Paragraph::new(Text::from("No transfers created. Use arrows to select items for transfer"));
-                frame.render_widget(&info, frame.size());
+                // Define horizontal constraints: previous, center (50% of available space), next
+                let chunks_horizontal = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Percentage(25), // Adjust this percentage to better center the text
+                        Constraint::Percentage(50),
+                        Constraint::Percentage(25),
+                    ])
+                    .split(size);
+
+                // Define vertical constraints: top, middle (50% of available height), bottom
+                let chunks_vertical = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Percentage(25), // Adjust this percentage to better center the text
+                        Constraint::Percentage(50),
+                        Constraint::Percentage(25),
+                    ])
+                    .split(chunks_horizontal[1]); // Apply vertical layout to the center horizontal chunk
+
+                let text = Text::from("No transfers created. Use arrows (↔) to select/deselect items for transfer");
+                let info = Paragraph::new(text)
+                    .alignment(Alignment::Center) // Center text horizontally
+                    .block(Block::default().borders(Borders::NONE)); // Optional: Add borders to see the widget's extents
+
+                frame.render_widget(&info, chunks_vertical[1]);
             }
         }
     }

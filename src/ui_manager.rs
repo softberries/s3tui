@@ -109,3 +109,14 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow
 
     Ok(terminal.show_cursor()?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ui_manager_new() {
+        let (ui_manager, mut action_rx) = UiManager::new();
+        assert!(action_rx.try_recv().is_err(), "Should start with no pending actions");
+    }
+}
