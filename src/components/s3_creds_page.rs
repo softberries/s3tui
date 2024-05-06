@@ -44,8 +44,12 @@ impl Component for S3CredsPage {
         where
             Self: Sized,
     {
+        let new_props = Props::from(state);
         S3CredsPage {
-            props: Props::from(state),
+            props: Props {
+                creds_table_state: self.props.creds_table_state.clone(),
+                ..new_props
+            },
             ..self
         }
     }
@@ -85,7 +89,7 @@ impl Component for S3CredsPage {
 
 impl S3CredsPage {
     fn get_s3_row(&self, item: &FileCredential) -> Row {
-        if  item.selected {
+        if item.selected {
             Row::new(vec![format!("{} (*)", item.name)])
         } else {
             Row::new(vec![format!("{}", item.name)])
@@ -144,7 +148,6 @@ impl S3CredsPage {
             });
         }
     }
-
 }
 
 impl ComponentRender<()> for S3CredsPage {
@@ -168,7 +171,7 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
-            selected: true
+            selected: true,
         };
         let state = State::new(vec![creds]);
 
@@ -184,7 +187,7 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
-            selected: true
+            selected: true,
         };
         let state = State::new(vec![creds.clone()]);
         let mut component = S3CredsPage::new(&state, tx);

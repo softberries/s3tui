@@ -81,6 +81,8 @@ impl Component for FileManagerPage {
         FileManagerPage {
             props: Props {
                 s3_history: self.props.s3_history.clone(),
+                s3_table_state: self.props.s3_table_state.clone(),
+                local_table_state: self.props.local_table_state.clone(),
                 ..new_props
             },
             ..self
