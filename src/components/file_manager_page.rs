@@ -207,7 +207,7 @@ impl ComponentRender<()> for FileManagerPage {
                     Constraint::Percentage(25),
                 ])
                 .split(chunks_h[1]); // Apply vertical layout to the center horizontal chunk
-            
+
             let loading_info = self.get_loading_info();
             frame.render_widget(&loading_info, chunks_v[1]);
         } else {
@@ -446,23 +446,26 @@ impl FileManagerPage {
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
         {
             let sr = selected_row.clone();
-            let cc = self.props.current_s3_creds.clone();
-            let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
-                ..cc
-            };
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds,
-            );
-            let _ = self.action_tx.send(Action::SelectS3Item {
-                item: selected_item
-            });
+            //disable sending whole directories/buckets
+            if !sr.is_directory && !sr.is_bucket {
+                let cc = self.props.current_s3_creds.clone();
+                let creds = FileCredential {
+                    default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                    ..cc
+                };
+                let selected_item = S3SelectedItem::new(
+                    sr.name,
+                    sr.bucket,
+                    Some(sr.path),
+                    sr.is_directory,
+                    sr.is_bucket,
+                    self.props.current_local_path.clone(),
+                    creds,
+                );
+                let _ = self.action_tx.send(Action::SelectS3Item {
+                    item: selected_item
+                });
+            }
         }
     }
 
@@ -471,20 +474,23 @@ impl FileManagerPage {
             self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
         {
             let sr = selected_row.clone();
-            if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
-                let selected_item = LocalSelectedItem::new(
-                    sr.name,
-                    sr.path,
-                    sr.is_directory,
-                    selected_bucket,
-                    self.props.current_s3_path.clone(),
-                    self.props.current_s3_creds.clone(),
-                );
-                let _ = self.action_tx.send(Action::SelectLocalItem {
-                    item: selected_item
-                });
-            } else {
-                self.show_popup = true;
+            //disable selecting whole directories
+            if !sr.is_directory {
+                if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
+                    let selected_item = LocalSelectedItem::new(
+                        sr.name,
+                        sr.path,
+                        sr.is_directory,
+                        selected_bucket,
+                        self.props.current_s3_path.clone(),
+                        self.props.current_s3_creds.clone(),
+                    );
+                    let _ = self.action_tx.send(Action::SelectLocalItem {
+                        item: selected_item
+                    });
+                } else {
+                    self.show_popup = true;
+                }
             }
         }
     }

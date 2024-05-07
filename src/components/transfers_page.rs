@@ -49,8 +49,13 @@ impl Component for TransfersPage {
         where
             Self: Sized,
     {
+        let new_props = Props::from(state);
         TransfersPage {
-            props: Props::from(state),
+            props: Props {
+                s3_table_state: self.props.s3_table_state,
+                local_table_state: self.props.local_table_state,
+                ..new_props
+            },
             ..self
         }
     }
@@ -104,7 +109,7 @@ impl TransfersPage {
     fn get_s3_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "S3 Account", "IsBucket", "IsDirectory", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "S3 Account", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.s3_selected_items.iter().map(|item| TransfersPage::get_s3_row(self, item));
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
@@ -118,7 +123,7 @@ impl TransfersPage {
     fn get_local_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "IsDirectory", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "Progress"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.local_selected_items.iter().map(|item| TransfersPage::get_local_row(self, item));
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)

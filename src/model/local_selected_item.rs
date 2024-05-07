@@ -42,7 +42,7 @@ impl LocalSelectedItem {
 
     pub fn to_columns(&self) -> Vec<String> {
         let progress = format!("{:.2}%", self.progress);
-        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), self.is_directory.to_string(), progress]
+        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), progress]
     }
 }
 
