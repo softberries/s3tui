@@ -116,7 +116,7 @@ impl TransfersPage {
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
 
@@ -130,7 +130,7 @@ impl TransfersPage {
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
-            .widths(&[Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
 }
