@@ -3,7 +3,7 @@
 
 ### Simple S3 CLI client for file transfers and more
 
-This is a simple TUI S3 client and serves mostly as a learing resource for my Rust journey. Most of the code is in the prototyping statge as I'm looking for best solutions and quickest ones interchangably. Use on your own risk.
+This is a simple TUI S3 client and serves mostly as a learing resource for my Rust journey. Most of the code is in the prototyping statge as I'm looking for best solutions and quickest ones interchangably. Use at your own risk.
 
 
 ![s3tui](assets/s3tui.jpeg)
