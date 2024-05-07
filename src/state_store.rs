@@ -140,7 +140,7 @@ impl StateStore {
         // the initial state once
         self.state_tx.send(state.clone())?;
 
-        let mut _ticker = tokio::time::interval(Duration::from_secs(1));
+        let _ticker = tokio::time::interval(Duration::from_secs(1));
 
         let result = loop {
             tokio::select! {

@@ -119,7 +119,11 @@ impl Component for FileManagerPage {
             }
             KeyCode::Esc => {
                 match self.s3_panel_selected {
-                    true => self.handle_go_back_s3(),
+                    true => {
+                        if !self.props.s3_loading {
+                            self.handle_go_back_s3()
+                        }
+                    }
                     false => {
                         if self.show_popup {
                             self.show_popup = false;
@@ -166,19 +170,57 @@ impl Component for FileManagerPage {
 impl ComponentRender<()> for FileManagerPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
         let focus_color = Color::Rgb(98, 114, 164);
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        // Split the frame into two main vertical sections
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),   // Take all space left after accounting for the bottom line
+                Constraint::Length(1) // Exactly one line for the bottom
+            ])
             .split(frame.size());
+
+        // Now split the top part horizontally into two side-by-side areas
+        let horizontal_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(vertical_chunks[0]);  // Apply this layout to the main area
+
         if self.props.s3_loading {
-            let loading_info = self.get_loading_info(focus_color);
-            frame.render_widget(&loading_info, chunks[0]);
+            let chunks_h = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(25), // Adjust this percentage to better center the text
+                    Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                ])
+                .split(horizontal_chunks[0]);
+
+            // Define vertical constraints: top, middle (50% of available height), bottom
+            let chunks_v = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(25), // Adjust this percentage to better center the text
+                    Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                ])
+                .split(chunks_h[1]); // Apply vertical layout to the center horizontal chunk
+            
+            let loading_info = self.get_loading_info();
+            frame.render_widget(&loading_info, chunks_v[1]);
         } else {
             let s3_table = self.get_s3_table(focus_color);
-            frame.render_stateful_widget(&s3_table, chunks[0], &mut self.props.clone().s3_table_state);
+            frame.render_stateful_widget(&s3_table, horizontal_chunks[0], &mut self.props.clone().s3_table_state);
         }
         let local_table = self.get_local_table(focus_color);
-        frame.render_stateful_widget(&local_table, chunks[1], &mut self.props.clone().local_table_state);
+        frame.render_stateful_widget(&local_table, horizontal_chunks[1], &mut self.props.clone().local_table_state);
+        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
+        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count();
+        let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
+            .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
+        frame.render_widget(bottom_text, vertical_chunks[1]);
         if self.show_popup {
             let block = Block::default().title("Problem detected").borders(Borders::ALL).fg(Color::Red);
             let area = Self::centered_rect(60, 20, frame.size());
@@ -203,8 +245,11 @@ impl ComponentRender<()> for FileManagerPage {
 }
 
 impl FileManagerPage {
-    fn get_loading_info(&self, focus_color: Color) -> Paragraph {
-        Paragraph::new(Text::from("Loading data from s3....").fg(focus_color))
+    fn get_loading_info(&self) -> Paragraph {
+        let text = Text::from("Loading data from s3....");
+        Paragraph::new(text)
+            .alignment(Alignment::Center) // Center text horizontally
+            .block(Block::default().borders(Borders::NONE)) // Optional: Add borders to see the widget's extents
     }
 
     fn get_local_table(&self, focus_color: Color) -> Table {
