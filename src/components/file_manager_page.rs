@@ -217,10 +217,18 @@ impl ComponentRender<()> for FileManagerPage {
         let local_table = self.get_local_table(focus_color);
         frame.render_stateful_widget(&local_table, horizontal_chunks[1], &mut self.props.clone().local_table_state);
         let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
-        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count();
-        let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
-            .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
-        frame.render_widget(bottom_text, vertical_chunks[1]);
+        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
+            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        if let Some(bucket) = &self.props.current_s3_bucket {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
+                .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
+            frame.render_widget(bottom_text, vertical_chunks[1]);
+        } else {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
+                .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
+            frame.render_widget(bottom_text, vertical_chunks[1]);
+        }
+
         if self.show_popup {
             let block = Block::default().title("Problem detected").borders(Borders::ALL).fg(Color::Red);
             let area = Self::centered_rect(60, 20, frame.size());

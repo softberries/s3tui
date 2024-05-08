@@ -56,6 +56,16 @@ impl State {
         for it in self.s3_selected_items.iter_mut() {
             if it.name == item.name {
                 it.transferred = true;
+                it.progress = 100f64;
+            }
+        }
+    }
+
+    pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
+        for it in self.local_selected_items.iter_mut() {
+            if it.name == item.name {
+                it.transferred = true;
+                it.progress = 100f64;
             }
         }
     }
@@ -69,13 +79,6 @@ impl State {
         );
     }
 
-    pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
-        for it in self.local_selected_items.iter_mut() {
-            if it.name == item.name {
-                it.transferred = true;
-            }
-        }
-    }
     pub fn update_buckets(&mut self, bucket: Option<String>, prefix: Option<String>, bucket_list: Vec<S3DataItem>) {
         self.s3_data = bucket_list;
         self.s3_loading = false;
