@@ -182,3 +182,57 @@ impl ComponentRender<()> for TransfersPage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_key_event_handling() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let state = State::default();  // Assume State::default() properly initializes the state
+        let mut page = TransfersPage::new(&state, tx);
+
+        // Test 'r' key for triggering run transfers
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Char('r'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE
+        });
+        assert_eq!(rx.recv().await.unwrap(), Action::RunTransfers, "Should send RunTransfers action");
+
+        // Test 'q' key for exit action
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Char('q'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE
+        });
+        assert_eq!(rx.recv().await.unwrap(), Action::Exit, "Should send Exit action");
+
+        // Test 's' key for navigation to S3Creds page
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Char('s'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::S3Creds }, "Should navigate to S3Creds");
+    }
+
+    #[tokio::test]
+    async fn test_initialization() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+
+        // Assuming Props::from(&state) initializes TableStates as default and copies selected items lists
+        assert!(page.props.s3_table_state.selected().is_none(), "S3 table state should be initialized to default");
+        assert!(page.props.local_table_state.selected().is_none(), "Local table state should be initialized to default");
+        assert_eq!(page.props.s3_selected_items, state.s3_selected_items, "S3 selected items should match state");
+        assert_eq!(page.props.local_selected_items, state.local_selected_items, "Local selected items should match state");
+    }
+}

@@ -222,7 +222,7 @@ impl S3DataFetcher {
             let download_progress_item = DownloadProgressItem {
                 name: item.name.clone(),
                 bucket: bucket.clone(),
-                progress: progress,
+                progress,
             };
             let _ = download_tx.send(download_progress_item);
         }

@@ -69,3 +69,71 @@ impl LocalDataFetcher {
         Ok(files_info)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::fs::{self, File};
+    use tokio::io::AsyncWriteExt;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_new() {
+        let fetcher = LocalDataFetcher::new();
+        assert!(fetcher.current_dir.lock().await.is_empty(), "Initial directory should be empty");
+    }
+
+    #[tokio::test]
+    async fn test_get_current_dir() {
+        let fetcher = LocalDataFetcher::new();
+        assert_eq!(fetcher.get_current_dir().await, "", "Should return the initial empty directory");
+    }
+
+    #[tokio::test]
+    async fn test_read_parent_directory() -> color_eyre::Result<()> {
+        let dir = tempdir()?;
+        let sub_dir = dir.path().join("subdir");
+        fs::create_dir(&sub_dir).await?;
+
+        let fetcher = LocalDataFetcher::new();
+        {
+            let mut current_dir = fetcher.current_dir.lock().await;
+            *current_dir = sub_dir.to_str().unwrap().to_string();
+        }
+
+        let parent_dir_files = fetcher.read_parent_directory().await?;
+        assert_eq!(parent_dir_files.len(), 1, "Should contain one directory entry");
+        assert!(parent_dir_files.iter().any(|f| f.name == "subdir"), "Should include the subdir");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_read_directory() -> color_eyre::Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("file.txt");
+        let mut file = File::create(&file_path).await?;
+        file.write_all(b"Hello, world!").await?;
+
+        let fetcher = LocalDataFetcher::new();
+        {
+            let mut current_dir = fetcher.current_dir.lock().await;
+            *current_dir = dir.path().to_str().unwrap().to_string();
+        }
+
+        let files = fetcher.read_directory(Some(fetcher.get_current_dir().await)).await?;
+        assert_eq!(files.len(), 1, "Should contain one file entry");
+        assert!(files.iter().any(|f| f.name == "file.txt" && f.is_directory == false), "Should correctly identify the file");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_read_home_directory() -> color_eyre::Result<()> {
+
+        let fetcher = LocalDataFetcher::new();
+       
+        let files = fetcher.read_directory(None).await?;
+        assert!(!files.is_empty(), "Should contain multiple files");
+        Ok(())
+    }
+}

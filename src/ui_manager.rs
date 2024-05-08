@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ui_manager_new() {
-        let (ui_manager, mut action_rx) = UiManager::new();
+        let (_ui_manager, mut action_rx) = UiManager::new();
         assert!(action_rx.try_recv().is_err(), "Should start with no pending actions");
     }
 }

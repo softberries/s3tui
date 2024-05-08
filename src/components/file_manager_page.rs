@@ -558,3 +558,29 @@ impl FileManagerPage {
             .split(popup_layout[1])[1]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_navigation_keys() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default(); // Define a default or a mock state as needed
+        let mut page = FileManagerPage::new(&state, tx);
+
+        // Ensure the S3 panel is selected initially
+        assert!(page.s3_panel_selected, "S3 panel should be initially selected");
+
+        // Test tab switching
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Tab,
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert!(!page.s3_panel_selected, "Local panel should be selected after tab");
+    }
+}

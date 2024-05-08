@@ -35,7 +35,7 @@ impl LocalSelectedItem {
             destination_bucket: String::new(),
             destination_path: String::new(),
             transferred: false,
-            s3_creds: s3_creds,
+            s3_creds,
             progress: 0f64,
         }
     }
