@@ -1978,6 +1978,7 @@ dependencies = [
  "http-body 0.4.6",
  "humansize",
  "log",
+ "percent-encoding",
  "pin-project",
  "rand",
  "ratatui",

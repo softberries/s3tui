@@ -6,6 +6,7 @@ use crate::model::upload_progress_item::UploadProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
+use percent_encoding::percent_decode;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum ActivePage {
@@ -128,7 +129,7 @@ impl State {
             }
         }
     }
-
+    
     /*
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
@@ -148,7 +149,12 @@ impl State {
         let bucket_name = bucket_parts.first().unwrap_or(&"");
 
         for item in selected_items.iter_mut() {
-            if &item.destination_bucket == bucket_name && &item.name == name {
+            let encoded_name = percent_decode(name.as_bytes())
+                .decode_utf8() // This returns a `Result<Cow<str>, Utf8Error>`
+                .unwrap_or_else(|e| panic!("Decoding error: {}", e)) // Handle the error case
+                .to_string(); // Convert `Cow<str>` to `String`
+            let name = String::from(&item.name);
+            if &item.destination_bucket == bucket_name && name == encoded_name {
                 item.progress = progress_item.progress;
             }
         }
