@@ -4,7 +4,7 @@ use std::path::{Path};
 use aws_sdk_s3::config::{Credentials, Region};
 use tokio::sync::mpsc::UnboundedSender;
 use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::s3_data_item::S3DataItem;
+use crate::model::s3_data_item::{BucketInfo, FileInfo, S3DataItem};
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
 use aws_smithy_runtime_api::http::Request;
@@ -282,11 +282,35 @@ impl S3DataFetcher {
                         let file_extension = path.extension()
                             .and_then(|ext| ext.to_str()) // Convert the OsStr to a &str
                             .unwrap_or("");
-                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), size, file_extension, "", false, false, location.clone()));
+                        let file_info = FileInfo {
+                            file_name: key.to_string(),
+                            size,
+                            file_type: file_extension.to_string(),
+                            path: "".to_string(),
+                            is_directory: false,
+                        };
+                        let bucket_info = BucketInfo {
+                            bucket: Some(bucket.to_string()),
+                            region: location.clone(),
+                            is_bucket: false,
+                        };
+                        all_objects.push(S3DataItem::init(bucket_info, file_info));
                     }
                     for object in output.common_prefixes() {
                         let key = object.prefix().unwrap_or_default();
-                        all_objects.push(S3DataItem::init(Some(bucket.to_string()), key.to_string(), "".to_string(), "Dir", key, true, false, location.clone()));
+                        let file_info = FileInfo {
+                            file_name: key.to_string(),
+                            size: "".to_string(),
+                            file_type: "Dir".to_string(),
+                            path: key.to_string(),
+                            is_directory: true,
+                        };
+                        let bucket_info = BucketInfo {
+                            bucket: Some(bucket.to_string()),
+                            region: location.clone(),
+                            is_bucket: false,
+                        };
+                        all_objects.push(S3DataItem::init(bucket_info, file_info));
                     }
                 }
                 Err(err) => {
@@ -308,8 +332,21 @@ impl S3DataFetcher {
                 |buckets| {
                     buckets.iter().filter_map(|bucket| {
                         // Filter out buckets where name is None, and map those with a name to a Vec<String>
-                        //vec![name.clone()]
-                        bucket.name.as_ref().map(|name| S3DataItem::init(None, name.clone(), "".to_string(), "Bucket", name, false, true, None))
+                        bucket.name.as_ref().map(|name| {
+                            let file_info = FileInfo {
+                                file_name: name.clone(),
+                                size: "".to_string(),
+                                file_type: "Bucket".to_string(),
+                                path: name.clone(),
+                                is_directory: false,
+                            };
+                            let bucket_info = BucketInfo {
+                                bucket: None,
+                                region: None,
+                                is_bucket: true,
+                            };
+                            S3DataItem::init(bucket_info, file_info)
+                        })
                     }).collect()
                 },
             )

@@ -60,12 +60,12 @@ fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String, String)
 
     for line in reader.lines() {
         let line = line?;
-        if line.starts_with("access_key=") {
-            access_key = line["access_key=".len()..].trim().to_string();
-        } else if line.starts_with("secret_key=") {
-            secret_key = line["secret_key=".len()..].trim().to_string();
-        } else if line.starts_with("default_region=") {
-            default_region = line["default_region=".len()..].trim().to_string();
+        if let Some(stripped) = line.strip_prefix("access_key=") {
+            access_key = stripped.trim().to_string()
+        } else if let Some(stripped) = line.strip_prefix("secret_key=") {
+            secret_key = stripped.trim().to_string()
+        } else if let Some(stripped) = line.strip_prefix("default_region=") {
+            default_region = stripped.trim().to_string()
         }
     }
 

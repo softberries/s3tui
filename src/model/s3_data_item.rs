@@ -1,3 +1,17 @@
+pub struct FileInfo {
+    pub file_name: String,
+    pub size: String,
+    pub file_type: String,
+    pub path: String,
+    pub is_directory: bool,
+}
+
+pub struct BucketInfo {
+    pub bucket: Option<String>,
+    pub region: Option<String>,
+    pub is_bucket: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct S3DataItem {
     pub bucket: Option<String>,
@@ -12,23 +26,17 @@ pub struct S3DataItem {
 
 impl S3DataItem {
     pub fn init(
-        bucket: Option<String>,
-        file_name: String,
-        size: String,
-        file_type: &str,
-        path: &str,
-        is_directory: bool,
-        is_bucket: bool,
-        region: Option<String>) -> S3DataItem {
+        bucket_info: BucketInfo,
+        file_info: FileInfo) -> S3DataItem {
         S3DataItem {
-            bucket,
-            name: file_name,
-            size,
-            file_type: String::from(file_type),
-            path: String::from(path),
-            is_directory,
-            is_bucket,
-            region,
+            bucket: bucket_info.bucket,
+            name: file_info.file_name,
+            size: file_info.size,
+            file_type: file_info.file_type,
+            path: file_info.path,
+            is_directory: file_info.is_directory,
+            is_bucket: bucket_info.is_bucket,
+            region: bucket_info.region,
         }
     }
     pub fn to_columns(&self) -> Vec<String> {
