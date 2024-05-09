@@ -73,6 +73,16 @@ impl StateStore {
                     }
                     Err(e) => {
                         tracing::error!("Failed to upload data: {}", e);
+                        let orig_item = item.clone();
+                        let errored_item = LocalSelectedItem {
+                            error: Some(e.to_string()),
+                            transferred: false,
+                            progress: 0f64,
+                            ..orig_item
+                        };
+                        if local_tx.send(errored_item).is_err() {
+                            tracing::error!("Failed to send item in error");
+                        }
                     }
                 }
             });

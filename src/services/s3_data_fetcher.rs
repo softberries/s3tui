@@ -21,7 +21,7 @@ use aws_sdk_s3::{
     Client,
 };
 use bytes::Bytes;
-use color_eyre::eyre;
+use color_eyre::{eyre, Report};
 use http_body::{Body, SizeHint};
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::upload_progress_item::UploadProgressItem;
@@ -184,9 +184,15 @@ impl S3DataFetcher {
             .customize()
             .map_request(move |req| ProgressBody::<SdkBody>::replace(req, upload_tx.clone()));
 
-        let _out = customized.send().await?;
-
-        Ok(true)
+        match customized.send().await {
+            Ok(_a) => {
+                Ok(true)
+            }
+            Err(e) => {
+                tracing::error!("Upload SdkError: {:?}", e);
+                Err(Report::msg(e.into_service_error().to_string()))
+            }
+        }
     }
 
     /*
@@ -205,29 +211,34 @@ impl S3DataFetcher {
             .key(item.name.clone())
             .send()
             .await?;
-        let mut object = client
+        match client
             .get_object()
             .bucket(bucket.clone())
             .key(item.name.clone())
             .send()
-            .await?;
-
-        let mut byte_count = 0_usize;
-        let total = head_obj.content_length.unwrap_or(0i64);
-        while let Some(bytes) = object.body.try_next().await? {
-            let bytes_len = bytes.len();
-            file.write_all(&bytes)?;
-            // trace!("Intermediate write of {bytes_len}");
-            byte_count += bytes_len;
-            let progress = Self::calculate_download_percentage(total, byte_count);
-            let download_progress_item = DownloadProgressItem {
-                name: item.name.clone(),
-                bucket: bucket.clone(),
-                progress,
-            };
-            let _ = download_tx.send(download_progress_item);
+            .await {
+            Ok(mut object) => {
+                let mut byte_count = 0_usize;
+                let total = head_obj.content_length.unwrap_or(0i64);
+                while let Some(bytes) = object.body.try_next().await? {
+                    let bytes_len = bytes.len();
+                    file.write_all(&bytes)?;
+                    byte_count += bytes_len;
+                    let progress = Self::calculate_download_percentage(total, byte_count);
+                    let download_progress_item = DownloadProgressItem {
+                        name: item.name.clone(),
+                        bucket: bucket.clone(),
+                        progress,
+                    };
+                    let _ = download_tx.send(download_progress_item);
+                }
+                Ok(true)
+            }
+            Err(e) => {
+                tracing::error!("Download SdkError: {:?}", e);
+                Err(Report::msg(e.into_service_error().to_string()))
+            }
         }
-        Ok(true)
     }
 
     fn calculate_download_percentage(total: i64, byte_count: usize) -> f64 {
@@ -276,7 +287,6 @@ impl S3DataFetcher {
                     for object in output.contents() {
                         let key = object.key().unwrap_or_default();
                         //todo: get size of the file
-                        // all_objects.push(vec![key.to_string()]);
                         let size = object.size().map_or(String::new(), |value| value.to_string());
                         let path = Path::new(key);
                         let file_extension = path.extension()

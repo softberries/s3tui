@@ -10,7 +10,8 @@ pub struct LocalSelectedItem {
     pub destination_path: String,
     pub transferred: bool,
     pub s3_creds: FileCredential,
-    pub progress: f64
+    pub progress: f64,
+    pub error: Option<String>
 }
 
 impl LocalSelectedItem {
@@ -24,6 +25,7 @@ impl LocalSelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            error: None
         }
     }
 
@@ -37,12 +39,13 @@ impl LocalSelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            error: None,
         }
     }
 
     pub fn to_columns(&self) -> Vec<String> {
         let progress = format!("{:.2}%", self.progress);
-        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), progress]
+        vec![self.name.clone(), self.path.clone(), self.destination_bucket.clone(), self.destination_path.to_string(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
     }
 }
 

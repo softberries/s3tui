@@ -60,16 +60,20 @@ impl State {
             } else if it.name == item.name && item.error.is_some() {
                 it.transferred = false;
                 it.progress = 0f64;
-                it.error = item.error.clone();
+                it.error.clone_from(&item.error);
             }
         }
     }
 
     pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
         for it in self.local_selected_items.iter_mut() {
-            if it.name == item.name {
+            if it.name == item.name && item.error.is_none() {
                 it.transferred = true;
                 it.progress = 100f64;
+            } else if it.name == item.name && item.error.is_some() {
+                it.transferred = false;
+                it.progress = 0f64;
+                it.error.clone_from(&item.error);
             }
         }
     }
@@ -136,7 +140,7 @@ impl State {
             }
         }
     }
-    
+
     /*
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
@@ -247,6 +251,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
+            error: None
         };
 
         state.local_selected_items.push(selected_item.clone());

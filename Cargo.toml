@@ -24,15 +24,15 @@ tokio = { version = "1.37.0", features = ["full"] }
 tokio-stream = { version = "0.1.15" }
 lazy_static = "1.4.0"
 color-eyre = "0.6.2"
-aws-config = { version= "1.1.9", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.21.0"
+aws-config = { version= "1.2.1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.27.0"
 humansize = "1.1.0"
 dirs = "5.0.1"
 config = "0.14.0"
 futures = "0.3.30"
 rand = "0.8.5"
 directories = "5.0.1"
-aws-smithy-types = "1.1.8"
+aws-smithy-types = "1.1.9"
 log = "0.4.21"
 pin-project = "1.1.5"
 http = "0.2.12"
