@@ -39,13 +39,12 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
             selected = false; // Only the first entry is selected
         }
     }
-    
+
     if credentials.is_empty() {
         Err(Report::msg("Missing credentials in your data creds folder"))
     } else {
         Ok(credentials)
     }
-
 }
 
 fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> {
@@ -104,9 +103,8 @@ mod tests {
     #[test]
     fn test_load_credentials_no_files() {
         let dir = tempdir().unwrap();
-        let creds = load_credentials_from_dir(dir.path()).unwrap();
-
-        assert!(creds.is_empty());
+        let res = load_credentials_from_dir(dir.path());
+        assert_eq!(res.err().unwrap().to_string(), Report::msg("Missing credentials in your data creds folder").to_string());
     }
 
     #[test]
