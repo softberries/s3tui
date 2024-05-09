@@ -224,6 +224,7 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
+            error: None
         };
 
         state.add_s3_selected_item(item.clone());
