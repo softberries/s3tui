@@ -21,6 +21,7 @@ use aws_sdk_s3::{
     Client,
 };
 use bytes::Bytes;
+use color_eyre::eyre;
 use http_body::{Body, SizeHint};
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::upload_progress_item::UploadProgressItem;
@@ -162,7 +163,7 @@ impl S3DataFetcher {
     - not sure when and if necessary to use multipart uploads,
     - no directory handling
      */
-    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<UploadProgressItem>) -> anyhow::Result<bool> {
+    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<UploadProgressItem>) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
@@ -192,7 +193,7 @@ impl S3DataFetcher {
     this function handles only simple files as of now.
     - no directory or full bucket handling
     */
-    pub async fn download_item(&self, item: S3SelectedItem, download_tx: UnboundedSender<DownloadProgressItem>) -> anyhow::Result<bool> {
+    pub async fn download_item(&self, item: S3SelectedItem, download_tx: UnboundedSender<DownloadProgressItem>) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
         path.push(item.name.clone());
@@ -237,7 +238,7 @@ impl S3DataFetcher {
         }
     }
 
-    pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
+    pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
         match (bucket, prefix) {
             (None, None) => self.list_buckets().await,
             (Some(bucket), None) => self.list_objects(bucket.as_str(), None).await,
@@ -245,7 +246,7 @@ impl S3DataFetcher {
             _ => self.list_buckets().await
         }
     }
-    async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> anyhow::Result<Vec<S3DataItem>> {
+    async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client(None).await;
         let head_obj = client
             .get_bucket_location()
@@ -313,7 +314,7 @@ impl S3DataFetcher {
                     }
                 }
                 Err(err) => {
-                    eprintln!("Err: {:?}", err) // Return the error immediately if encountered
+                    tracing::error!("Err: {:?}", err) // Return the error immediately if encountered
                 }
             }
         }
@@ -322,7 +323,7 @@ impl S3DataFetcher {
     }
 
     // Example async method to fetch data from an external service
-    async fn list_buckets(&self) -> anyhow::Result<Vec<S3DataItem>> {
+    async fn list_buckets(&self) -> eyre::Result<Vec<S3DataItem>> {
         let client = self.get_s3_client(None).await;
         let mut fetched_data: Vec<S3DataItem> = vec![];
         if let Ok(res) = client.list_buckets().send().await {

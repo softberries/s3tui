@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
-use anyhow::bail;
+use color_eyre::eyre;
 use directories::UserDirs;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -13,12 +13,12 @@ pub struct FileCredential {
     pub selected: bool,
 }
 
-pub fn load_credentials() -> anyhow::Result<Vec<FileCredential>> {
+pub fn load_credentials() -> eyre::Result<Vec<FileCredential>> {
     let path = get_credentials_dir()?;
     load_credentials_from_dir(path.as_path())
 }
 
-fn load_credentials_from_dir(dir_path: &Path) -> anyhow::Result<Vec<FileCredential>> {
+fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential>> {
     let mut credentials = Vec::new();
     let mut selected = true;
     for entry in fs::read_dir(dir_path)? {
@@ -43,7 +43,7 @@ fn load_credentials_from_dir(dir_path: &Path) -> anyhow::Result<Vec<FileCredenti
     Ok(credentials)
 }
 
-fn get_credentials_dir() -> anyhow::Result<PathBuf> {
+fn get_credentials_dir() -> eyre::Result<PathBuf> {
     let user_dirs = UserDirs::new().ok_or(io::Error::new(io::ErrorKind::NotFound, "Cannot find home directory"))?;
     let home_dir = user_dirs.home_dir();
     let creds_dir = home_dir.join(".s3tui/creds");
@@ -51,7 +51,7 @@ fn get_credentials_dir() -> anyhow::Result<PathBuf> {
     Ok(creds_dir)
 }
 
-fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String, String)> {
+fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
     let mut access_key = String::new();
@@ -70,7 +70,7 @@ fn parse_credential_file(path: &Path) -> anyhow::Result<(String, String, String)
     }
 
     if access_key.is_empty() || secret_key.is_empty() || default_region.is_empty() {
-        bail!("Missing access_key/secret_key/default_region in file: {:?}", path);
+        panic!("Missing access_key/secret_key/default_region in file: {:?}", path);
     }
 
     Ok((access_key, secret_key, default_region))

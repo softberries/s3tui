@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::time::Duration;
+use color_eyre::eyre;
 use tokio::sync::{broadcast, mpsc};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::services::local_data_fetcher::LocalDataFetcher;
@@ -37,11 +38,11 @@ impl StateStore {
                 match fetcher.download_item(item.clone(), down_tx).await {
                     Ok(_) => {
                         if tx.send(item.clone()).is_err() {
-                            eprintln!("Failed to send downloaded item");
+                            tracing::error!("Failed to send downloaded item");
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to download data: {}", e);
+                        tracing::error!("Failed to download data: {}", e);
                     }
                 }
             });
@@ -56,11 +57,11 @@ impl StateStore {
                 match fetcher.upload_item(item.clone(), up_tx).await {
                     Ok(_) => {
                         if local_tx.send(item.clone()).is_err() {
-                            eprintln!("Failed to send uploaded item");
+                            tracing::error!("Failed to send uploaded item");
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to upload data: {}", e);
+                        tracing::error!("Failed to upload data: {}", e);
                     }
                 }
             });
@@ -73,7 +74,7 @@ impl StateStore {
                     let _ = s3_tx.send((bucket.clone(), prefix.clone(), data));
                 }
                 Err(e) => {
-                    eprintln!("Failed to fetch S3 data: {}", e);
+                    tracing::error!("Failed to fetch S3 data: {}", e);
                 }
             }
         });
@@ -85,7 +86,7 @@ impl StateStore {
                     let _ = local_tx.send((path.clone().unwrap_or("/".to_string()), data));
                 }
                 Err(e) => {
-                    eprintln!("Failed to fetch local data: {}", e);
+                    tracing::error!("Failed to fetch local data: {}", e);
                     // Handle error, maybe retry or send error state
                 }
             }
@@ -103,7 +104,7 @@ impl StateStore {
                     };
                 }
                 Err(e) => {
-                    eprintln!("Failed to fetch local data: {}", e);
+                    tracing::error!("Failed to fetch local data: {}", e);
                     // Handle error, maybe retry or send error state
                 }
             }
@@ -120,7 +121,7 @@ impl StateStore {
         mut action_rx: UnboundedReceiver<Action>,
         mut interrupt_rx: broadcast::Receiver<Interrupted>,
         creds: Vec<FileCredential>,
-    ) -> anyhow::Result<Interrupted> {
+    ) -> eyre::Result<Interrupted> {
         let local_data_fetcher = LocalDataFetcher::new();
         let mut state = State::new(creds.clone());
         let s3_data_fetcher = Self::get_current_s3_fetcher(&state);

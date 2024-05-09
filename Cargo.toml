@@ -11,12 +11,18 @@ keywords = ["s3", "aws", "ratatui", "tui", "softwaremill"]
 categories = ["command-line-utilities", "asynchronous"]
 
 [dependencies]
-ratatui = { version = "0.26.1", features = ["all-widgets"] }
+better-panic = "0.3.0"
+human-panic = "1.2.3"
+signal-hook = "0.3.17"
+strip-ansi-escapes = "0.2.0"
+libc = "0.2.148"
+ratatui = { version = "0.26.1", features = ["all-widgets", "serde", "macros"] }
 throbber-widgets-tui = "0.5.0"
 crossterm = { version = "0.27.0", features = ["event-stream"] }
+clap = { version = "4.4.5", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-stream = { version = "0.1.15" }
-anyhow = "1.0.82"
+lazy_static = "1.4.0"
 color-eyre = "0.6.2"
 aws-config = { version= "1.1.9", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1.21.0"
@@ -29,13 +35,19 @@ directories = "5.0.1"
 aws-smithy-types = "1.1.8"
 log = "0.4.21"
 pin-project = "1.1.5"
-tracing = "0.1.40"
 http = "0.2.12"
 http-body = "0.4.6"
 bytes = "1.6.0"
 aws-smithy-runtime-api = "1.5.0"
 url = "2.2.2"
 percent-encoding = "2.3.1"
+tracing = "0.1.40"
+tracing-futures = "0.2.5"
+tracing-error = "0.2.0"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "serde"] }
+
+[build-dependencies]
+vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]}
 
 [dev-dependencies]
 tempfile = "3.2.0"

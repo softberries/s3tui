@@ -3,7 +3,8 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
+use color_eyre::eyre;
+use color_eyre::eyre::Context;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     execute,
@@ -11,7 +12,6 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-// use ratatui::prelude::*;
 use tokio::sync::{
     broadcast,
     mpsc::{self, UnboundedReceiver},
@@ -40,7 +40,7 @@ impl UiManager {
         self,
         mut state_rx: UnboundedReceiver<State>,
         mut interrupt_rx: broadcast::Receiver<Interrupted>,
-    ) -> anyhow::Result<Interrupted> {
+    ) -> eyre::Result<Interrupted> {
         // consume the first state to initialize the ui app
         let mut app_router = {
             let state = state_rx.recv().await.unwrap();
@@ -52,7 +52,7 @@ impl UiManager {
         let mut ticker = tokio::time::interval(RENDERING_TICK_RATE);
         let mut crossterm_events = EventStream::new();
 
-        let result: anyhow::Result<Interrupted> = loop {
+        let result: eyre::Result<Interrupted> = loop {
             tokio::select! {
                 // Tick to terminate the select every N milliseconds
                 _ = ticker.tick() => (),
@@ -86,9 +86,10 @@ impl UiManager {
 
         result
     }
+
 }
 
-fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+fn setup_terminal() -> eyre::Result<Terminal<CrosstermBackend<Stdout>>> {
     let mut stdout = io::stdout();
 
     enable_raw_mode()?;
@@ -98,7 +99,7 @@ fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
     Ok(Terminal::new(CrosstermBackend::new(stdout))?)
 }
 
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> eyre::Result<()> {
     disable_raw_mode()?;
 
     execute!(
@@ -109,6 +110,8 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow
 
     Ok(terminal.show_cursor()?)
 }
+
+
 
 #[cfg(test)]
 mod tests {

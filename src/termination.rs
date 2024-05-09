@@ -1,3 +1,4 @@
+use color_eyre::eyre;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
 use tokio::sync::broadcast;
@@ -18,7 +19,7 @@ impl Terminator {
         Self { interrupt_tx }
     }
 
-    pub fn terminate(&mut self, interrupted: Interrupted) -> anyhow::Result<()> {
+    pub fn terminate(&mut self, interrupted: Interrupted) -> eyre::Result<()> {
         self.interrupt_tx.send(interrupted)?;
 
         Ok(())
