@@ -274,7 +274,7 @@ impl FileManagerPage {
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Local List").fg(self.get_home_local_color()))
+            .block(Block::default().borders(Borders::ALL).title(format!("Local List ({} objects)", self.props.local_data.len())).fg(self.get_home_local_color()))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
@@ -313,7 +313,7 @@ impl FileManagerPage {
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("S3 List").fg(self.get_home_s3_color()))
+            .block(Block::default().borders(Borders::ALL).title(format!("S3 List ({} objects)", self.props.s3_data.len())).fg(self.get_home_s3_color()))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table

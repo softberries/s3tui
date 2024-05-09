@@ -266,7 +266,6 @@ impl S3DataFetcher {
             .delimiter("/")
             .set_prefix(prefix)
             .bucket(bucket.to_owned())
-            .max_keys(10) // In this example, go 10 at a time.
             .into_paginator()
             .send();
 
