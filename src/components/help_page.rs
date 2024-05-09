@@ -6,24 +6,21 @@ use crate::components::component::{Component, ComponentRender};
 use crate::model::state::{ActivePage, State};
 
 struct Props {
-    commands: Vec<(String, String)>,  // command and its description
-    list_state: ListState,
+    commands: Vec<Vec<String>>,  
 }
 
 impl From<&State> for Props {
     fn from(_state: &State) -> Self {
         Props {
             commands: vec![
-                ("s".to_string(), "select current s3 account".to_string()),
-                ("Esc".to_string(), "move back to the file manager window".to_string()),
-                ("↔".to_string(), "select/deselect files to transfer".to_string()),
-                ("↕ / j / k".to_string(), "move up/down on the lists".to_string()),
-                ("t".to_string(), "show currently selected files to transfer".to_string()),
-                ("r".to_string(), "run currently selected transfers".to_string()),
-                ("q".to_string(), "quit the application".to_string()),
-                ("?".to_string(), "this help page".to_string()),
+                vec!["s".to_string(), "move back to the file manager window".to_string()],
+                vec!["Esc".to_string(), "select/deselect files to transfer".to_string()],
+                vec!["↔ / j / k".to_string(), "move up/down on the lists".to_string()],
+                vec!["t".to_string(), "show currently selected files to transfer".to_string()],
+                vec!["r".to_string(), "run currently selected transfers".to_string()],
+                vec!["q".to_string(), "quit the application".to_string()],
+                vec!["?".to_string(), "this help page".to_string()]
             ],
-            list_state: ListState::default(),
         }
     }
 }
@@ -31,22 +28,6 @@ impl From<&State> for Props {
 pub struct HelpPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
-}
-
-impl HelpPage {
-    pub fn navigate(&mut self, up: bool) {
-        let i = match self.props.list_state.selected() {
-            Some(i) => {
-                if up {
-                    i.saturating_sub(1)
-                } else {
-                    i.saturating_add(1).min(self.props.commands.len().saturating_sub(1))
-                }
-            }
-            None => 0,
-        };
-        self.props.list_state.select(Some(i));
-    }
 }
 
 impl Component for HelpPage {
@@ -82,8 +63,6 @@ impl Component for HelpPage {
         }
 
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => self.navigate(false),
-            KeyCode::Char('k') | KeyCode::Up => self.navigate(true),
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
@@ -97,28 +76,28 @@ impl Component for HelpPage {
 
 impl ComponentRender<()> for HelpPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
-        let size = frame.size();
-
-        // Create a list of ListItem from commands
-        let items: Vec<ListItem> = self.props.commands.iter().map(|(cmd, desc)| {
-            let text = vec![
-                Line::from(vec![
-                    Span::raw(cmd),
-                    Span::raw("  -  "),
-                    Span::styled(desc, Style::new().green().italic()),
-                    ".".into(),
-                ]),
-            ];
-            ListItem::new(text)
-        }).collect();
-
-        // Create a List widget
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Commands"))
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-            .highlight_symbol(">> ");
-
-        // Render the list widget
-        frame.render_stateful_widget(list, size, &mut self.props.list_state.clone());
+        let v_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(3),
+                Constraint::Percentage(94),
+                Constraint::Percentage(3),
+            ])
+            .split(frame.size());
+        let h_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(3),
+                Constraint::Percentage(94),
+                Constraint::Percentage(3),
+            ])
+            .split(v_layout[1]);
+        let rows: Vec<Row> = self.props.commands.iter().map(|c| Row::new(c.clone())).collect();
+        let header =
+            Row::new(vec!["Command Name", "Description"]).fg(Color::Yellow).bold().underlined().height(1).bottom_margin(0);
+        let table = Table::new(rows, [Constraint::Length(30), Constraint::Length(70)])
+            .block(Block::new().borders(Borders::ALL).fg(Color::Yellow))
+            .header(header);
+        frame.render_widget(table, h_layout[1]);
     }
 }
