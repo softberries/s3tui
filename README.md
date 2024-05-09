@@ -30,26 +30,34 @@
 
 1. **Configure Environment Variables**:
    ```bash
-   export S3TUI_CONFIG=`pwd`/.config
-   export S3TUI_DATA=`pwd`/.data
-   export S3TUI_LOGLEVEL=info
+    export S3TUI_CONFIG=`pwd`/.config
+    export S3TUI_DATA=`pwd`/.data
+    export S3TUI_LOGLEVEL=info
    ```
    Alternatively, use the default paths set according to the XDG Base Directory Specification.
 
+2. **Add your s3 credentials***
+    - Add as many configurations under `creds` directory in your `S3TUI_DATA`
+    - The file should look like the one below:
+    ```bash
+      access_key=YOUR_ACCESS_KEY
+      secret_key=YOUR_SECRET_KEY
+      default_region=eu-west-1
+    ```
 2. **Installation**:
     - Ensure you have Rust and `cargo` installed.
     - Clone the repository and build the project:
-      ```bash
+    ```bash
       git clone <repository-url>
       cd s3tui
       cargo build --release
-      ```
+    ```
 
 3. **Running s3tui**:
     - Navigate to the project directory and run:
-      ```bash
+    ```bash
       ./target/release/s3tui
-      ```
+    ```
 
 ## Logs
 
