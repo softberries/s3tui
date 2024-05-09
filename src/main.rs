@@ -3,7 +3,7 @@ mod state_store;
 mod ui_manager;
 mod model;
 mod components;
-mod fetchers;
+mod services;
 mod settings;
 
 use crate::settings::file_credentials;
