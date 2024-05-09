@@ -36,7 +36,7 @@
    ```
    Alternatively, use the default paths set according to the XDG Base Directory Specification.
 
-2. **Add your s3 credentials***
+2. **Add your s3 credentials**
     - Add as many configurations under `creds` directory in your `S3TUI_DATA`
     - The file should look like the one below:
     ```bash
