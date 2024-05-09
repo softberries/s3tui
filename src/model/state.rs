@@ -54,9 +54,13 @@ impl State {
     }
     pub fn update_selected_s3_transfers(&mut self, item: S3SelectedItem) {
         for it in self.s3_selected_items.iter_mut() {
-            if it.name == item.name {
+            if it.name == item.name && item.error.is_none() {
                 it.transferred = true;
                 it.progress = 100f64;
+            } else if it.name == item.name && item.error.is_some() {
+                it.transferred = false;
+                it.progress = 0f64;
+                it.error = item.error.clone();
             }
         }
     }

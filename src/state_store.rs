@@ -43,11 +43,22 @@ impl StateStore {
                     }
                     Err(e) => {
                         tracing::error!("Failed to download data: {}", e);
+                        let orig_item = item.clone();
+                        let errored_item = S3SelectedItem {
+                            error: Some(e.to_string()),
+                            transferred: false,
+                            progress: 0f64,
+                            ..orig_item
+                        };
+                        if tx.send(errored_item).is_err() {
+                            tracing::error!("Failed to send item in error");
+                        }
                     }
                 }
             });
         }
     }
+
     async fn upload_data(&self, s3_data_fetcher: &S3DataFetcher, local_selected_items: Vec<LocalSelectedItem>, selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>, upload_tx: UnboundedSender<UploadProgressItem>) {
         for item in local_selected_items {
             let local_tx = selected_local_transfers_tx.clone();
@@ -67,6 +78,7 @@ impl StateStore {
             });
         }
     }
+
     async fn fetch_s3_data(&self, bucket: Option<String>, prefix: Option<String>, s3_data_fetcher: S3DataFetcher, s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
         tokio::spawn(async move {
             match s3_data_fetcher.list_current_location(bucket.clone(), prefix.clone()).await {
@@ -79,6 +91,7 @@ impl StateStore {
             }
         });
     }
+
     async fn fetch_local_data(&self, path: Option<String>, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
         tokio::spawn(async move {
             match local_data_fetcher.read_directory(path.clone()).await {
@@ -92,6 +105,7 @@ impl StateStore {
             }
         });
     }
+
     async fn move_back_local_data(&self, current_path: String, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
         tokio::spawn(async move {
             let path = Path::new(&current_path);

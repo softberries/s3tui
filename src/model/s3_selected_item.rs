@@ -12,6 +12,7 @@ pub struct S3SelectedItem {
     pub transferred: bool,
     pub s3_creds: FileCredential,
     pub progress: f64,
+    pub error: Option<String>,
 }
 
 impl S3SelectedItem {
@@ -26,15 +27,16 @@ impl S3SelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            error: None,
         }
     }
 
     pub fn to_columns(&self) -> Vec<String> {
         let progress = format!("{:.2}%", self.progress);
         if self.is_bucket {
-            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress]
+            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
         } else {
-            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress]
+            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
         }
     }
 
@@ -49,6 +51,7 @@ impl S3SelectedItem {
             transferred: false, // Default value since it's not part of S3DataItem
             s3_creds: creds,
             progress: 0f64,
+            error: None,
         }
     }
 }
