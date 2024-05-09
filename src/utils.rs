@@ -9,8 +9,7 @@ use lazy_static::lazy_static;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, Layer};
 
-const VERSION_MESSAGE: &str =
-  concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_DESCRIBE"), " (", env!("VERGEN_BUILD_DATE"), ")");
+const VERSION_MESSAGE: &str = env!("CARGO_PKG_VERSION");
 
 lazy_static! {
   pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();

@@ -35,10 +35,10 @@ async fn main() -> eyre::Result<()> {
                 ui_manager.main_loop(state_rx, interrupt_rx.resubscribe()),
              )?;
         } else {
-            tracing::error!("No credentials file found, add credentials file into .s3tui/creds in your home directory.")
+            eprintln!("No credentials file found, add credentials file into your $S3TUI_DATA/creds directory in your home directory.");
         }
     } else {
-        tracing::error!("Problem reading credential files, add at least one credentials file into .s3tui/creds in your home directory.")
+        eprintln!("Problem reading credential files, add at least one credentials file into $S3TUI_DATA/creds in your home directory.");
     }
 
 

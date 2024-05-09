@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
-use color_eyre::eyre;
-use directories::UserDirs;
+use std::path::Path;
+use color_eyre::{eyre, Report};
+use crate::utils::get_data_dir;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileCredential {
@@ -14,7 +14,7 @@ pub struct FileCredential {
 }
 
 pub fn load_credentials() -> eyre::Result<Vec<FileCredential>> {
-    let path = get_credentials_dir()?;
+    let path = get_data_dir().join("creds");
     load_credentials_from_dir(path.as_path())
 }
 
@@ -39,16 +39,13 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
             selected = false; // Only the first entry is selected
         }
     }
+    
+    if credentials.is_empty() {
+        Err(Report::msg("Missing credentials in your data creds folder"))
+    } else {
+        Ok(credentials)
+    }
 
-    Ok(credentials)
-}
-
-fn get_credentials_dir() -> eyre::Result<PathBuf> {
-    let user_dirs = UserDirs::new().ok_or(io::Error::new(io::ErrorKind::NotFound, "Cannot find home directory"))?;
-    let home_dir = user_dirs.home_dir();
-    let creds_dir = home_dir.join(".s3tui/creds");
-
-    Ok(creds_dir)
 }
 
 fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> {
