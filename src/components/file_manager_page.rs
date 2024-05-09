@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
+use throbber_widgets_tui::Throbber;
 use tokio::sync::mpsc::UnboundedSender;
 use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
@@ -169,7 +170,7 @@ impl Component for FileManagerPage {
 
 impl ComponentRender<()> for FileManagerPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
-        let focus_color = Color::Rgb(98, 114, 164);
+        let focus_color = Color::LightBlue;
         // Split the frame into two main vertical sections
         let vertical_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -209,7 +210,15 @@ impl ComponentRender<()> for FileManagerPage {
                 .split(chunks_h[1]); // Apply vertical layout to the center horizontal chunk
 
             let loading_info = self.get_loading_info();
-            frame.render_widget(&loading_info, chunks_v[1]);
+            let loader_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage((100 - 50) / 2),
+                    Constraint::Percentage(50),
+                    Constraint::Percentage((100 - 50) / 2),
+                ])
+                .split(chunks_v[1]);
+            frame.render_widget(loading_info, loader_layout[1]);
         } else {
             let s3_table = self.get_s3_table(focus_color);
             frame.render_stateful_widget(&s3_table, horizontal_chunks[0], &mut self.props.clone().s3_table_state);
@@ -221,11 +230,11 @@ impl ComponentRender<()> for FileManagerPage {
             self.props.local_selected_items.iter().filter(|i| i.transferred).count();
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
-                .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
             frame.render_widget(bottom_text, vertical_chunks[1]);
         } else {
             let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
-                .style(Style::default().fg(Color::LightCyan)).bg(Color::Blue);
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
             frame.render_widget(bottom_text, vertical_chunks[1]);
         }
 
@@ -253,11 +262,9 @@ impl ComponentRender<()> for FileManagerPage {
 }
 
 impl FileManagerPage {
-    fn get_loading_info(&self) -> Paragraph {
-        let text = Text::from("Loading data from s3....");
-        Paragraph::new(text)
-            .alignment(Alignment::Center) // Center text horizontally
-            .block(Block::default().borders(Borders::NONE)) // Optional: Add borders to see the widget's extents
+    fn get_loading_info(&self) -> Throbber {
+        Throbber::default().label("Loading s3 data...").style(Style::default().fg(Color::White))
+            .throbber_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
     }
 
     fn get_local_table(&self, focus_color: Color) -> Table {
