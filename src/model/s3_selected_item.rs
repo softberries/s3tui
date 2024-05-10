@@ -64,7 +64,128 @@ impl PartialEq for S3SelectedItem {
             self.path == other.path &&
             self.is_directory == other.is_directory &&
             self.is_bucket == other.is_bucket
-        // self.destination_dir == other.destination_dir
     }
 }
-// impl Eq for S3SelectedItem {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_s3_selected_item_correctly() {
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "".to_string(),
+            transferred: false,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: None
+        };
+        let res = S3SelectedItem::new(
+            "file1.txt".into(),
+            Some("test-bucket".into()),
+            Some("path/to/file1.txt".into()),
+            false,
+            false,
+            "".into(),
+            Default::default()
+        );
+        assert_eq!(item, res);
+    }
+
+    #[test]
+    fn to_columns_get_correct_vector() {
+        let item = S3SelectedItem::new(
+            "file1.txt".into(),
+            Some("test-bucket".into()),
+            Some("path/to/file1.txt".into()),
+            false,
+            false,
+            "".into(),
+            Default::default()
+        );
+        let res = item.to_columns();
+        assert_eq!(res.len(), 6);
+        assert_eq!(res[0], item.bucket.unwrap());
+        assert_eq!(res[1], item.name);
+        assert_eq!(res[2], item.destination_dir);
+        assert_eq!(res[3], item.s3_creds.name);
+        assert_eq!(res[4], "0.00%".to_string());
+        assert_eq!(res[5], "".to_string());
+    }
+
+    #[test]
+    fn to_columns_with_error_get_correct_vector() {
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "".to_string(),
+            transferred: false,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: Some("Error".into())
+        };
+        let res = item.to_columns();
+        assert_eq!(res.len(), 6);
+        assert_eq!(res[0], item.bucket.unwrap());
+        assert_eq!(res[1], item.name);
+        assert_eq!(res[2], item.destination_dir);
+        assert_eq!(res[3], item.s3_creds.name);
+        assert_eq!(res[4], "0.00%".to_string());
+        assert_eq!(res[5], "Error".to_string());
+    }
+
+    #[test]
+    fn to_columns_for_bucket_get_correct_vector() {
+        let item = S3SelectedItem::new(
+            "file1.txt".into(),
+            Some("test-bucket".into()),
+            Some("path/to/file1.txt".into()),
+            false,
+            true,
+            "".into(),
+            Default::default()
+        );
+        let res = item.to_columns();
+
+        assert_eq!(res.len(), 6);
+        assert_eq!(res[0], item.name);
+        assert_eq!(res[1], "/");
+        assert_eq!(res[2], item.destination_dir);
+        assert_eq!(res[3], item.s3_creds.name);
+        assert_eq!(res[4], "0.00%".to_string());
+        assert_eq!(res[5], "".to_string());
+    }
+
+    #[test]
+    fn to_columns_for_bucket_with_error_get_correct_vector() {
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: true,
+            destination_dir: "".to_string(),
+            transferred: false,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: Some("Error".into())
+        };
+        let res = item.to_columns();
+
+        assert_eq!(res.len(), 6);
+        assert_eq!(res[0], item.name);
+        assert_eq!(res[1], "/");
+        assert_eq!(res[2], item.destination_dir);
+        assert_eq!(res[3], item.s3_creds.name);
+        assert_eq!(res[4], "0.00%".to_string());
+        assert_eq!(res[5], "Error".to_string());
+    }
+}

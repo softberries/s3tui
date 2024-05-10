@@ -55,8 +55,80 @@ impl PartialEq for LocalSelectedItem {
         self.name == other.name &&
             self.path == other.path &&
             self.is_directory == other.is_directory
-        // self.destination_bucket == other.destination_bucket
-        // self.destination_path == other.destination_path
     }
 }
-// impl Eq for S3SelectedItem {}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_local_selected_item_correctly() {
+        let item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 0.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            error: None
+        };
+        let res = LocalSelectedItem::new(
+            "file1.txt".into(),
+            "path/to/file1.txt".into(),
+            false,
+            "test-bucket".into(),
+            "".to_string(),
+            Default::default()
+        );
+        assert_eq!(item, res);
+    }
+
+    #[test]
+    fn to_columns_get_correct_vector() {
+        let item = LocalSelectedItem::new(
+            "file1.txt".into(),
+            "path/to/file1.txt".into(),
+            false,
+            "test-bucket".into(),
+            "".to_string(),
+            Default::default()
+        );
+        let res = item.to_columns();
+        assert_eq!(res.len(), 7);
+        assert_eq!(res[0], item.name);
+        assert_eq!(res[1], item.path);
+        assert_eq!(res[2], item.destination_bucket);
+        assert_eq!(res[3], item.destination_path);
+        assert_eq!(res[4], item.s3_creds.name);
+        assert_eq!(res[5], "0.00%".to_string());
+        assert_eq!(res[6], "".to_string());
+    }
+
+    #[test]
+    fn to_columns_with_error_get_correct_vector() {
+        let item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 0.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            error: Some("Error".into())
+        };
+        let res = item.to_columns();
+        assert_eq!(res.len(), 7);
+        assert_eq!(res[0], item.name);
+        assert_eq!(res[1], item.path);
+        assert_eq!(res[2], item.destination_bucket);
+        assert_eq!(res[3], item.destination_path);
+        assert_eq!(res[4], item.s3_creds.name);
+        assert_eq!(res[5], "0.00%".to_string());
+        assert_eq!(res[6], "Error".to_string());
+    }
+}

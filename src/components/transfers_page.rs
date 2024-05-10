@@ -118,7 +118,7 @@ impl TransfersPage {
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))   
+            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))
             .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
@@ -238,5 +238,126 @@ mod tests {
         assert!(page.props.local_table_state.selected().is_none(), "Local table state should be initialized to default");
         assert_eq!(page.props.s3_selected_items, state.s3_selected_items, "S3 selected items should match state");
         assert_eq!(page.props.local_selected_items, state.local_selected_items, "Local selected items should match state");
+    }
+
+    #[test]
+    fn get_s3_row_no_modifiers_constructs_plain_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: true,
+            destination_dir: "".to_string(),
+            transferred: false,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: None
+        };
+        let res = page.get_s3_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()));
+    }
+    #[test]
+    fn get_s3_row_with_error_constructs_red_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: true,
+            destination_dir: "".to_string(),
+            transferred: false,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: Some("Error".into())
+        };
+        let res = page.get_s3_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Red));
+    }
+
+    #[test]
+    fn get_s3_row_with_transferred_constructs_blue_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = S3SelectedItem {
+            bucket: Some("test-bucket".into()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: true,
+            destination_dir: "".to_string(),
+            transferred: true,
+            s3_creds: Default::default(),
+            progress: 0f64,
+            error: None
+        };
+        let res = page.get_s3_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Blue));
+    }
+
+    #[test]
+    fn get_local_row_without_modifiers_constructs_plain_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 0.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            error: None
+        };
+        let res = page.get_local_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()));
+    }
+    #[test]
+    fn get_local_row_with_transferred_constructs_blue_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: true,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 0.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            error: None
+        };
+        let res = page.get_local_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Blue));
+    }
+
+    #[test]
+    fn get_local_row_with_error_constructs_red_row() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let state = State::default();
+        let page = TransfersPage::new(&state, tx);
+        let item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 0.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            error: Some("Error".into())
+        };
+        let res = page.get_local_row(&item);
+        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Red));
     }
 }

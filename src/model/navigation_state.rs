@@ -12,3 +12,21 @@ impl NavigationState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_navigation_state_correctly() {
+        let ns = NavigationState {
+            current_bucket: Some("bucket".into()),
+            current_prefix: Some("prefix".into()),
+        };
+
+        let res = NavigationState::new(Some("bucket".into()), Some("prefix".into()));
+
+        assert_eq!(ns.current_bucket, res.current_bucket);
+        assert_eq!(ns.current_prefix, res.current_prefix);
+    }
+}
