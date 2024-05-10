@@ -1,4 +1,28 @@
-[![Rust](https://github.com/softberries/s3tui/actions/workflows/rust.yml/badge.svg)](https://github.com/softberries/s3tui/actions/workflows/rust.yml)
+<h1 align="center">
+
+```angular2html
+        _____ __        _ 
+   ____|__  // /___  __(_)
+  / ___//_  / __/ / / / / 
+ (__  )__/ / /_/ /_/ / /  
+/____/____/\__/\__,_/_/
+```
+
+[![CI][s0]][l0] [![crates][s1]][l1] ![MIT][s2] [![UNSAFE][s3]][l3] [![TWEET][s6]][l6] [![dep_status][s7]][l7]
+
+</h1>
+
+[s0]: https://github.com/softberries/s3tui/actions/workflows/rust.yml/badge.svg
+[l0]: https://github.com/softberries/s3tui/actions/workflows/rust.yml
+[s1]: https://img.shields.io/crates/v/s3tui.svg
+[l1]: https://crates.io/crates/s3tui
+[s2]: https://img.shields.io/badge/license-MIT-blue.svg
+[s3]: https://img.shields.io/badge/unsafe-forbidden-success.svg
+[l3]: https://github.com/rust-secure-code/safety-dance/
+[s6]: https://img.shields.io/twitter/follow/grajo?label=follow&style=social
+[l6]: https://twitter.com/intent/follow?screen_name=grajo
+[s7]: https://deps.rs/repo/github/softberries/s3ui/status.svg
+[l7]: https://deps.rs/repo/github/softberries/s3tui
 
 ---
 

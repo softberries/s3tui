@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 mod termination;
 mod state_store;
 mod ui_manager;
