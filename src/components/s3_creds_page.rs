@@ -195,5 +195,47 @@ mod tests {
         // Simulate pressing 'q'
         component.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()));
         assert_eq!(rx.recv().await.unwrap(), Action::Exit);
+
+        // Simulate pressing '?'
+        component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
+        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::Help });
+
+        // Simulate pressing 'Esc'
+        component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::FileManager });
+    }
+
+    #[test]
+    fn get_s3_row_should_format_selected_row() {
+        let (tx, _rx) = unbounded_channel::<Action>();
+        let creds = FileCredential {
+            name: "test".to_string(),
+            access_key: "accessKey".to_string(),
+            secret_key: "secretKey".to_string(),
+            default_region: "eu-north-1".to_string(),
+            selected: true,
+        };
+        let state = State::new(vec![creds.clone()]);
+        let component = S3CredsPage::new(&state, tx);
+        let res = component.get_s3_row(&creds);
+
+        assert_eq!(res, Row::new(vec![format!("{} (*)", creds.name)]))
+    }
+
+    #[test]
+    fn get_s3_row_should_format_not_selected_row() {
+        let (tx, _rx) = unbounded_channel::<Action>();
+        let creds = FileCredential {
+            name: "test".to_string(),
+            access_key: "accessKey".to_string(),
+            secret_key: "secretKey".to_string(),
+            default_region: "eu-north-1".to_string(),
+            selected: false,
+        };
+        let state = State::new(vec![creds.clone()]);
+        let component = S3CredsPage::new(&state, tx);
+        let res = component.get_s3_row(&creds);
+
+        assert_eq!(res, Row::new(vec![format!("{}", creds.name)]))
     }
 }

@@ -225,6 +225,24 @@ mod tests {
             state: KeyEventState::NONE,
         });
         assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::S3Creds }, "Should navigate to S3Creds");
+
+        // Test '?' key for navigation to Help page
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Char('?'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::Help }, "Should navigate to Help Page");
+
+        // Test '?' key for navigation back to FileManager page
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Esc,
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::FileManager }, "Should navigate to FileManager Page");
     }
 
     #[tokio::test]
