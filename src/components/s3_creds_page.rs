@@ -97,15 +97,14 @@ impl S3CredsPage {
     }
 
     fn get_s3_table(&self) -> Table {
-        let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Account Name"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Account Name"]).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.creds_data.iter().map(|item| S3CredsPage::get_s3_row(self, item));
         let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Account list").fg(Color::White))
-            .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
+            .block(Block::default().borders(Borders::ALL).title("Account list"))
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }

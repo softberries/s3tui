@@ -94,9 +94,9 @@ impl ComponentRender<()> for HelpPage {
             .split(v_layout[1]);
         let rows: Vec<Row> = self.props.commands.iter().map(|c| Row::new(c.clone())).collect();
         let header =
-            Row::new(vec!["Command Name", "Description"]).fg(Color::Yellow).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Command Name", "Description"]).bold().underlined().height(1).bottom_margin(0);
         let table = Table::new(rows, [Constraint::Length(30), Constraint::Length(70)])
-            .block(Block::new().borders(Borders::ALL).fg(Color::Yellow))
+            .block(Block::new().borders(Borders::ALL))
             .header(header);
         frame.render_widget(table, h_layout[1]);
     }

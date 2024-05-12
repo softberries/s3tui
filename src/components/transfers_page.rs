@@ -118,8 +118,8 @@ impl TransfersPage {
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)").fg(Color::White))
-            .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
+            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)"))
+            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
@@ -132,8 +132,8 @@ impl TransfersPage {
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)").fg(Color::White))
-            .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
+            .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)"))
+            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }

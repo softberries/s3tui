@@ -170,7 +170,7 @@ impl Component for FileManagerPage {
 
 impl ComponentRender<()> for FileManagerPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
-        let focus_color = Color::LightBlue;
+        let focus_color = Color::Rgb(98, 114, 164);
         // Split the frame into two main vertical sections
         let vertical_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -263,8 +263,8 @@ impl ComponentRender<()> for FileManagerPage {
 
 impl FileManagerPage {
     fn get_loading_info(&self) -> Throbber {
-        Throbber::default().label("Loading s3 data...").style(Style::default().fg(Color::White))
-            .throbber_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+        Throbber::default().label("Loading s3 data...").style(Style::default())
+            .throbber_style(Style::default().add_modifier(Modifier::BOLD))
     }
 
     fn get_local_table(&self, focus_color: Color) -> Table {
@@ -272,17 +272,18 @@ impl FileManagerPage {
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.local_data.iter().map(|item| FileManagerPage::get_local_row(self, item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
+        let block = self.get_home_local_block();
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!("Local List ({} objects)", self.props.local_data.len())).fg(self.get_home_local_color()))
-            .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
+            .block(block)
+            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
 
     fn get_s3_row(&self, item: &S3DataItem) -> Row {
         if Self::contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
-            Row::new(item.to_columns().clone()).bg(Color::LightGreen)
+            Row::new(item.to_columns().clone()).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
         }
@@ -290,7 +291,7 @@ impl FileManagerPage {
 
     fn get_local_row(&self, item: &LocalDataItem) -> Row {
         if Self::contains_local_item(item, &self.props.local_selected_items, &self.props.current_s3_creds) {
-            Row::new(item.to_columns().clone()).bg(Color::LightGreen)
+            Row::new(item.to_columns().clone()).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
         }
@@ -311,24 +312,29 @@ impl FileManagerPage {
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_s3_row(self, item));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
+        let block = self.get_home_s3_block();
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!("S3 List ({} objects)", self.props.s3_data.len())).fg(self.get_home_s3_color()))
-            .highlight_style(Style::default().fg(focus_color).bg(Color::White).add_modifier(Modifier::REVERSED))
+            .block(block)
+            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
 
-    fn get_home_s3_color(&self) -> Color {
-        match self.s3_panel_selected {
-            true => Color::White,
-            false => Color::Blue,
+    fn get_home_s3_block(&self) -> Block {
+        if self.s3_panel_selected {
+            Block::default().borders(Borders::ALL).title(format!("S3 List ({} objects)", self.props.s3_data.len())).fg(Color::Blue)
+        } else {
+            Block::default().borders(Borders::ALL).title(format!("S3 List ({} objects)", self.props.s3_data.len()))
         }
     }
-    fn get_home_local_color(&self) -> Color {
-        match self.s3_panel_selected {
-            false => Color::White,
-            true => Color::Blue,
+
+
+    fn get_home_local_block(&self) -> Block {
+        if !self.s3_panel_selected {
+            Block::default().borders(Borders::ALL).title(format!("Local List ({} objects)", self.props.local_data.len())).fg(Color::Blue)
+        } else {
+            Block::default().borders(Borders::ALL).title(format!("Local List ({} objects)", self.props.local_data.len()))
         }
     }
 
@@ -444,6 +450,7 @@ impl FileManagerPage {
     fn current_state(&self) -> &NavigationState {
         self.props.s3_history.last().unwrap_or(&self.default_navigation_state)
     }
+
     pub fn handle_go_back_local(&mut self) {
         let _ = self.action_tx.send(Action::MoveBackLocal);
     }
