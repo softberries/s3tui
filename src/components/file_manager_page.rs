@@ -11,6 +11,10 @@ use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
+
+static INPUT_SIZE: usize = 60;
 
 #[derive(Clone)]
 struct Props {
@@ -54,214 +58,146 @@ pub struct FileManagerPage {
     /// State Mapped ChatPage Props
     props: Props,
     s3_panel_selected: bool,
-    show_popup: bool,
+    show_problem_popup: bool,
+    show_bucket_input: bool,
+    show_delete_confirmation: bool,
     default_navigation_state: NavigationState,
+    input: Input,
 }
 
-impl Component for FileManagerPage {
-    fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
-        where
-            Self: Sized,
-    {
-        FileManagerPage {
-            action_tx: action_tx.clone(),
-            // set the props
-            props: Props::from(state),
-            show_popup: false,
-            s3_panel_selected: true,
-            default_navigation_state: NavigationState::new(None, None),
-        }
-            .move_with_state(state)
-    }
-
-    fn move_with_state(self, state: &State) -> Self
-        where
-            Self: Sized,
-    {
-        let new_props = Props::from(state);
-        FileManagerPage {
-            props: Props {
-                s3_history: self.props.s3_history.clone(),
-                s3_table_state: self.props.s3_table_state.clone(),
-                local_table_state: self.props.local_table_state.clone(),
-                ..new_props
-            },
-            ..self
-        }
-    }
-
-    fn name(&self) -> &str {
-        "File Manager"
-    }
-
-    fn handle_key_event(&mut self, key: KeyEvent) {
-        if key.kind != KeyEventKind::Press {
-            return;
-        }
-
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                match self.s3_panel_selected {
-                    true => self.move_down_s3_table_selection(),
-                    false => self.move_down_local_table_selection()
-                }
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                match self.s3_panel_selected {
-                    true => self.move_up_s3_table_selection(),
-                    false => self.move_up_local_table_selection()
-                }
-            }
-            KeyCode::Enter => {
-                match self.s3_panel_selected {
-                    true => self.handle_selected_s3_row(),
-                    false => self.handle_selected_local_row()
-                }
-            }
-            KeyCode::Esc => {
-                match self.s3_panel_selected {
-                    true => {
-                        if !self.props.s3_loading {
-                            self.handle_go_back_s3()
-                        }
-                    }
-                    false => {
-                        if self.show_popup {
-                            self.show_popup = false;
-                        } else {
-                            self.handle_go_back_local()
-                        }
-                    }
-                }
-            }
-            KeyCode::Right => {
-                if self.s3_panel_selected {
-                    self.transfer_from_s3_to_local()
-                } else {
-                    self.cancel_transfer_from_local_to_s3()
-                }
-            }
-            KeyCode::Left => {
-                if self.s3_panel_selected {
-                    self.cancel_transfer_from_s3_to_local()
-                } else {
-                    self.transfer_from_local_to_s3()
-                }
-            }
-            KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
-            }
-            KeyCode::Char('t') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Transfers });
-            }
-            KeyCode::Char('s') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3Creds });
-            }
-            KeyCode::Tab => {
-                self.s3_panel_selected = !&self.s3_panel_selected;
-            }
-            KeyCode::Char('q') => {
-                let _ = self.action_tx.send(Action::Exit);
-            }
-            _ => {}
-        }
-    }
-}
-
-impl ComponentRender<()> for FileManagerPage {
-    fn render(&self, frame: &mut Frame, _props: ()) {
-        let focus_color = Color::Rgb(98, 114, 164);
-        // Split the frame into two main vertical sections
-        let vertical_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0),   // Take all space left after accounting for the bottom line
-                Constraint::Length(1) // Exactly one line for the bottom
-            ])
-            .split(frame.size());
-
-        // Now split the top part horizontally into two side-by-side areas
-        let horizontal_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Percentage(50),
-            ])
-            .split(vertical_chunks[0]);  // Apply this layout to the main area
-
-        if self.props.s3_loading {
-            let chunks_h = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(25), // Adjust this percentage to better center the text
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(25),
-                ])
-                .split(horizontal_chunks[0]);
-
-            // Define vertical constraints: top, middle (50% of available height), bottom
-            let chunks_v = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Percentage(25), // Adjust this percentage to better center the text
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(25),
-                ])
-                .split(chunks_h[1]); // Apply vertical layout to the center horizontal chunk
-
-            let loading_info = self.get_loading_info();
-            let loader_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage((100 - 50) / 2),
-                    Constraint::Percentage(50),
-                    Constraint::Percentage((100 - 50) / 2),
-                ])
-                .split(chunks_v[1]);
-            frame.render_widget(loading_info, loader_layout[1]);
-        } else {
-            let s3_table = self.get_s3_table(focus_color);
-            frame.render_stateful_widget(&s3_table, horizontal_chunks[0], &mut self.props.clone().s3_table_state);
-        }
-        let local_table = self.get_local_table(focus_color);
-        frame.render_stateful_widget(&local_table, horizontal_chunks[1], &mut self.props.clone().local_table_state);
-        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
-        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
-            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
-        if let Some(bucket) = &self.props.current_s3_bucket {
-            let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
-                .style(Style::default().fg(Color::White)).bg(Color::Blue);
-            frame.render_widget(bottom_text, vertical_chunks[1]);
-        } else {
-            let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
-                .style(Style::default().fg(Color::White)).bg(Color::Blue);
-            frame.render_widget(bottom_text, vertical_chunks[1]);
-        }
-
-        if self.show_popup {
-            let block = Block::default().title("Problem detected").borders(Borders::ALL).fg(Color::Red);
-            let area = Self::centered_rect(60, 20, frame.size());
-            frame.render_widget(Clear, area); //this clears out the background
-            frame.render_widget(block, area);
-            // Define the text for the paragraph
-            let text = "   To move data into s3 you need to select at least a bucket to which you want to transfer your files";
-
-            // Create the paragraph widget
-            let paragraph = Paragraph::new(text)
-                .block(Block::default()) // Optional: set another block here if you want borders around the text
-                .alignment(Alignment::Left); // Set text alignment within the paragraph
-
-            // Optionally, adjust the area inside the block for the paragraph content
-            // You might want to shrink the area to leave some padding inside the block borders
-            let inner_area = Rect::new(area.x + 1, area.y + 2, area.width - 2, area.height - 2);
-
-            // Render the paragraph widget
-            frame.render_widget(paragraph, inner_area);
-        }
-    }
-}
 
 impl FileManagerPage {
+    fn make_transfer_error_popup(&self) -> Paragraph {
+        // Define the text for the paragraph
+        let text = "   To move data into s3 you need to select at least a bucket to which you want to transfer your files";
+        // Create the paragraph widget
+        Paragraph::new(text)
+            .block(Block::default()) // Optional: set another block here if you want borders around the text
+            .alignment(Alignment::Left)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default()
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Esc",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ]))
+                            .alignment(Alignment::Left)
+                            .position(ratatui::widgets::block::Position::Bottom),
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("| Problem detected! |"),
+                        ]))
+                            .alignment(Alignment::Left)
+                            .position(ratatui::widgets::block::Position::Top),
+                    )
+            ).fg(Color::Red)
+    }
+
+    fn make_delete_alert(&self) -> Paragraph {
+        let scroll = self.input.visual_scroll(60);
+        let input = Paragraph::new("Are you sure you want to delete this object?")
+            .style(Style::default().fg(Color::Green))
+            .scroll((0, scroll as u16))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default()
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("ok", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Enter",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ]))
+                            .alignment(Alignment::Right)
+                            .position(ratatui::widgets::block::Position::Bottom),
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Esc",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ]))
+                            .alignment(Alignment::Left)
+                            .position(ratatui::widgets::block::Position::Bottom),
+                    )
+            );
+        input
+    }
+    fn make_bucket_name_input(&self) -> Paragraph {
+        let scroll = self.input.visual_scroll(INPUT_SIZE);
+        let input = Paragraph::new(self.input.value())
+            .style(Style::default().fg(Color::Green))
+            .scroll((0, scroll as u16))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default()
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("save", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Enter",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ]))
+                            .alignment(Alignment::Right)
+                            .position(ratatui::widgets::block::Position::Bottom),
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Esc",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ]))
+                            .alignment(Alignment::Left)
+                            .position(ratatui::widgets::block::Position::Bottom),
+                    )
+                    .title(
+                        ratatui::widgets::block::Title::from(Line::from(vec![
+                            Span::raw("| Enter new bucket name |"),
+                        ]))
+                            .alignment(Alignment::Left)
+                            .position(ratatui::widgets::block::Position::Top),
+                    )
+            );
+        input
+    }
+
     fn get_loading_info(&self) -> Throbber {
         Throbber::default().label("Loading s3 data...").style(Style::default())
             .throbber_style(Style::default().add_modifier(Modifier::BOLD))
@@ -511,7 +447,7 @@ impl FileManagerPage {
                         item: selected_item
                     });
                 } else {
-                    self.show_popup = true;
+                    self.show_problem_popup = true;
                 }
             }
         }
@@ -570,6 +506,252 @@ impl FileManagerPage {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
             .split(popup_layout[1])[1]
+    }
+}
+
+impl Component for FileManagerPage {
+    fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
+        where
+            Self: Sized,
+    {
+        FileManagerPage {
+            action_tx: action_tx.clone(),
+            // set the props
+            props: Props::from(state),
+            show_problem_popup: false,
+            show_bucket_input: false,
+            show_delete_confirmation: false,
+            s3_panel_selected: true,
+            default_navigation_state: NavigationState::new(None, None),
+            input: Input::default().with_value(String::from("")),
+        }
+            .move_with_state(state)
+    }
+
+
+    fn move_with_state(self, state: &State) -> Self
+        where
+            Self: Sized,
+    {
+        let new_props = Props::from(state);
+        FileManagerPage {
+            props: Props {
+                s3_history: self.props.s3_history.clone(),
+                s3_table_state: self.props.s3_table_state.clone(),
+                local_table_state: self.props.local_table_state.clone(),
+                ..new_props
+            },
+            ..self
+        }
+    }
+
+    fn name(&self) -> &str {
+        "File Manager"
+    }
+
+    fn handle_key_event(&mut self, key: KeyEvent) {
+        if key.kind != KeyEventKind::Press {
+            return;
+        }
+        if self.show_bucket_input {
+            match key.code {
+                KeyCode::Enter => {
+                    self.show_bucket_input = false;
+                }
+                KeyCode::Esc => {
+                    self.show_bucket_input = false;
+                }
+                _ => {
+                    let _ = self.input.handle_event(&crossterm::event::Event::Key(key));
+                }
+            }
+        } else if self.show_delete_confirmation {
+            match key.code {
+                KeyCode::Enter => {
+                    self.show_delete_confirmation = false;
+                }
+                KeyCode::Esc => {
+                    self.show_delete_confirmation = false;
+                }
+                _ => {}
+            }
+        } else {
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    match self.s3_panel_selected {
+                        true => self.move_down_s3_table_selection(),
+                        false => self.move_down_local_table_selection()
+                    }
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    match self.s3_panel_selected {
+                        true => self.move_up_s3_table_selection(),
+                        false => self.move_up_local_table_selection()
+                    }
+                }
+                KeyCode::Char('c') => {
+                    if self.s3_panel_selected {
+                        self.input.reset();
+                        self.show_bucket_input = true;
+                    }
+                }
+                KeyCode::Enter => {
+                    match self.s3_panel_selected {
+                        true => self.handle_selected_s3_row(),
+                        false => self.handle_selected_local_row()
+                    }
+                }
+                KeyCode::Esc => {
+                    match self.s3_panel_selected {
+                        true => {
+                            if !self.props.s3_loading {
+                                self.handle_go_back_s3()
+                            }
+                        }
+                        false => {
+                            if self.show_problem_popup {
+                                self.show_problem_popup = false;
+                            } else {
+                                self.handle_go_back_local()
+                            }
+                        }
+                    }
+                }
+                KeyCode::Delete | KeyCode::Backspace => {
+                    self.show_delete_confirmation = true;
+                }
+                KeyCode::Right => {
+                    if self.s3_panel_selected {
+                        self.transfer_from_s3_to_local()
+                    } else {
+                        self.cancel_transfer_from_local_to_s3()
+                    }
+                }
+                KeyCode::Left => {
+                    if self.s3_panel_selected {
+                        self.cancel_transfer_from_s3_to_local()
+                    } else {
+                        self.transfer_from_local_to_s3()
+                    }
+                }
+                KeyCode::Char('?') => {
+                    let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
+                }
+                KeyCode::Char('t') => {
+                    let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Transfers });
+                }
+                KeyCode::Char('s') => {
+                    let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3Creds });
+                }
+                KeyCode::Tab => {
+                    self.s3_panel_selected = !&self.s3_panel_selected;
+                }
+                KeyCode::Char('q') => {
+                    let _ = self.action_tx.send(Action::Exit);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl ComponentRender<()> for FileManagerPage {
+    fn render(&self, frame: &mut Frame, _props: ()) {
+        let focus_color = Color::Rgb(98, 114, 164);
+        // Split the frame into two main vertical sections
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),   // Take all space left after accounting for the bottom line
+                Constraint::Length(1) // Exactly one line for the bottom
+            ])
+            .split(frame.size());
+
+        // Now split the top part horizontally into two side-by-side areas
+        let horizontal_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(vertical_chunks[0]);  // Apply this layout to the main area
+
+        if self.props.s3_loading {
+            let chunks_h = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(25), // Adjust this percentage to better center the text
+                    Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                ])
+                .split(horizontal_chunks[0]);
+
+            // Define vertical constraints: top, middle (50% of available height), bottom
+            let chunks_v = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(25), // Adjust this percentage to better center the text
+                    Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                ])
+                .split(chunks_h[1]); // Apply vertical layout to the center horizontal chunk
+
+            let loading_info = self.get_loading_info();
+            let loader_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage((100 - 50) / 2),
+                    Constraint::Percentage(50),
+                    Constraint::Percentage((100 - 50) / 2),
+                ])
+                .split(chunks_v[1]);
+            frame.render_widget(loading_info, loader_layout[1]);
+        } else {
+            let s3_table = self.get_s3_table(focus_color);
+            frame.render_stateful_widget(&s3_table, horizontal_chunks[0], &mut self.props.clone().s3_table_state);
+        }
+        let local_table = self.get_local_table(focus_color);
+        frame.render_stateful_widget(&local_table, horizontal_chunks[1], &mut self.props.clone().local_table_state);
+        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
+        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
+            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        if let Some(bucket) = &self.props.current_s3_bucket {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
+            frame.render_widget(bottom_text, vertical_chunks[1]);
+        } else {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
+            frame.render_widget(bottom_text, vertical_chunks[1]);
+        }
+
+        if self.show_problem_popup {
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area); //this clears out the background
+            let block = self.make_transfer_error_popup();
+            frame.render_widget(block, area);
+        } else if self.show_bucket_input {
+            let block = self.make_bucket_name_input();
+            let area = Self::centered_rect(40, 20, frame.size());
+            let error_paragraph = Paragraph::new("* Possible error message")
+                .style(Style::default().fg(Color::Red));
+            frame.render_widget(Clear, area); //this clears out the background
+            frame.render_widget(block, area);
+            let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
+            frame.render_widget(Clear, error_rect);
+            frame.render_widget(error_paragraph, error_rect);
+            frame.set_cursor(
+                area.x
+                    + self.input.visual_cursor() as u16
+                    + 1,
+                area.y + 1,
+            );
+        } else if self.show_delete_confirmation {
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area); //this clears out the background
+            let block = self.make_delete_alert();
+            frame.render_widget(block, area);
+        }
     }
 }
 
