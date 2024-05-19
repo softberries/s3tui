@@ -29,7 +29,9 @@ pub struct State {
     pub current_s3_bucket: Option<String>,
     pub current_s3_path: Option<String>,
     pub creds: Vec<FileCredential>,
-    pub current_creds: FileCredential
+    pub current_creds: FileCredential,
+    pub local_delete_state: Option<String>,
+    pub s3_delete_state: Option<String>,
 }
 
 impl State {
@@ -47,7 +49,6 @@ impl State {
                 ..st
             }
         }
-
     }
     pub fn set_active_page(&mut self, page: ActivePage) {
         self.active_page = page;
@@ -97,6 +98,14 @@ impl State {
     pub fn update_files(&mut self, path: String, files: Vec<LocalDataItem>) {
         self.local_data = files;
         self.current_local_path = path;
+    }
+
+    pub fn set_local_delete_error(&mut self, error_str: Option<String>) {
+        self.local_delete_state = error_str;
+    }
+
+    pub fn set_s3_delete_error(&mut self, error_str: Option<String>) {
+        self.s3_delete_state = error_str;
     }
 
     pub fn set_current_local_path(&mut self, path: String) {
@@ -209,7 +218,7 @@ mod tests {
     fn new_state_with_selected_credential_sets_current_creds_correctly() {
         let creds = vec![
             FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: true }
+            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: true },
         ];
         let state = State::new(creds.clone());
         assert_eq!(state.current_creds, creds[1]);
@@ -219,7 +228,7 @@ mod tests {
     fn new_state_without_selected_credential_sets_current_creds_correctly() {
         let creds = vec![
             FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false }
+            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
         ];
         let state = State::new(creds.clone());
         assert_eq!(state.current_creds, state.current_creds);
@@ -229,14 +238,15 @@ mod tests {
     fn set_current_s3_creds_set_creds_correctly_for_existing_state() {
         let creds = vec![
             FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: true },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false }
+            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
         ];
         let mut state = State::new(creds.clone());
         assert_eq!(state.current_creds, creds[0]);
-        
+
         state.set_current_s3_creds(creds[1].clone());
         assert_eq!(state.current_creds.name, creds[1].name);
     }
+
     #[test]
     fn add_and_remove_s3_selected_item_works() {
         let mut state = State::default();
@@ -250,7 +260,7 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
-            error: None
+            error: None,
         };
 
         state.add_s3_selected_item(item.clone());
@@ -273,7 +283,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
 
         state.add_local_selected_item(item.clone());
@@ -283,6 +293,7 @@ mod tests {
         state.remove_local_selected_item(item);
         assert!(state.local_selected_items.is_empty());
     }
+
     #[test]
     fn update_selected_s3_transfers_updates_correctly() {
         let mut state = State::default();
@@ -296,7 +307,7 @@ mod tests {
             transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
-            error: None
+            error: None,
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
@@ -317,14 +328,14 @@ mod tests {
             transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
-            error: Some("Error".into())
+            error: Some("Error".into()),
         };
         state.add_s3_selected_item(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
         assert!(!state.s3_selected_items[0].transferred);
         assert_eq!(state.s3_selected_items[0].progress, 0f64);
     }
-    
+
     #[test]
     fn update_selected_local_transfers_updates_correctly() {
         let mut state = State::default();
@@ -337,7 +348,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
@@ -357,14 +368,14 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: Some("Error".into())
+            error: Some("Error".into()),
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
         assert!(!state.local_selected_items[0].transferred);
         assert_eq!(state.local_selected_items[0].progress, 0f64);
     }
-    
+
     #[test]
     fn remove_already_transferred_items_removes_correctly() {
         let mut state = State::default();
@@ -377,7 +388,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
         let local_item_transfered = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
@@ -388,7 +399,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
         let s3_item_not_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -400,7 +411,7 @@ mod tests {
             transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
-            error: None
+            error: None,
         };
         let s3_item_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -412,7 +423,7 @@ mod tests {
             transferred: true,
             s3_creds: FileCredential::default(),
             progress: 0.0,
-            error: None
+            error: None,
         };
         state.add_local_selected_item(local_item_transfered);
         state.add_local_selected_item(local_item_not_transfered);
@@ -420,14 +431,14 @@ mod tests {
         state.add_s3_selected_item(s3_item_transferred);
         assert_eq!(state.s3_selected_items.len(), 2);
         assert_eq!(state.local_selected_items.len(), 2);
-        
+
         state.remove_already_transferred_items();
         assert_eq!(state.s3_selected_items.len(), 1);
         assert_eq!(state.local_selected_items.len(), 1);
         assert!(!state.s3_selected_items[0].transferred);
         assert!(!state.local_selected_items[0].transferred);
     }
-    
+
     #[test]
     fn update_progress_on_selected_local_item_updates_correctly() {
         let mut state = State::default();
@@ -440,16 +451,16 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
 
         state.local_selected_items.push(selected_item.clone());
         let progress_item = UploadProgressItem {
             progress: 0.5,
-            uri: "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into()
+            uri: "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into(),
         };
         state.update_progress_on_selected_local_item(progress_item);
-        
+
         assert_eq!(state.local_selected_items[0].progress, 0.5);
     }
 
@@ -466,14 +477,14 @@ mod tests {
             transferred: true,
             s3_creds: FileCredential::default(),
             progress: 0.0,
-            error: None
+            error: None,
         };
 
         state.s3_selected_items.push(item.clone());
         let progress_item = DownloadProgressItem {
             progress: 0.5,
             bucket: "test-bucket".to_string(),
-            name: "file1.txt".into()
+            name: "file1.txt".into(),
         };
         state.update_progress_on_selected_s3_item(progress_item);
 

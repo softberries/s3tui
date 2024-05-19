@@ -30,6 +30,8 @@ struct Props {
     current_s3_bucket: Option<String>,
     current_s3_path: String,
     current_s3_creds: FileCredential,
+    s3_delete_state: Option<String>,
+    local_delete_state: Option<String>,
 }
 
 impl From<&State> for Props {
@@ -48,6 +50,8 @@ impl From<&State> for Props {
             current_s3_bucket: st.current_s3_bucket,
             current_s3_path: st.current_s3_path.unwrap_or("/".to_string()),
             current_s3_creds: st.current_creds,
+            s3_delete_state: st.s3_delete_state,
+            local_delete_state: st.local_delete_state,
         }
     }
 }
@@ -61,6 +65,7 @@ pub struct FileManagerPage {
     show_problem_popup: bool,
     show_bucket_input: bool,
     show_delete_confirmation: bool,
+    show_delete_error: bool,
     default_navigation_state: NavigationState,
     input: Input,
 }
@@ -104,11 +109,9 @@ impl FileManagerPage {
             ).fg(Color::Red)
     }
 
-    fn make_delete_alert(&self) -> Paragraph {
-        let scroll = self.input.visual_scroll(60);
-        let input = Paragraph::new("Are you sure you want to delete this object?")
-            .style(Style::default().fg(Color::Green))
-            .scroll((0, scroll as u16))
+    fn make_delete_alert(&self, text: String, text_color: Color) -> Paragraph {
+        let input = Paragraph::new(text)
+            .style(Style::default().fg(text_color))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -127,7 +130,7 @@ impl FileManagerPage {
                             Span::raw("|"),
                         ]))
                             .alignment(Alignment::Right)
-                            .position(ratatui::widgets::block::Position::Bottom),
+                            .position(block::Position::Bottom),
                     )
                     .title(
                         ratatui::widgets::block::Title::from(Line::from(vec![
@@ -142,7 +145,7 @@ impl FileManagerPage {
                             Span::raw("|"),
                         ]))
                             .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
+                            .position(block::Position::Bottom),
                     )
             );
         input
@@ -492,6 +495,56 @@ impl FileManagerPage {
         }
     }
 
+    fn delete_selected_s3_item(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds,
+            );
+            let _ = self.action_tx.send(Action::DeleteS3Item {
+                item: selected_item
+            });
+        }
+    }
+
+    fn delete_selected_local_item(&mut self) {
+        if let Some(selected_row) =
+            self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let selected_item = LocalSelectedItem::new(
+                sr.name,
+                sr.path,
+                sr.is_directory,
+                "".to_string(),
+                self.props.current_s3_path.clone(),
+                self.props.current_s3_creds.clone(),
+            );
+            let _ = self.action_tx.send(Action::DeleteLocalItem {
+                item: selected_item
+            });
+            self.show_delete_confirmation = false;
+        }
+    }
+    
+    fn send_clear_delete_errors_message(&mut self) {
+        let _ = self.action_tx.send(Action::ClearDeletionErrors);
+        self.show_delete_error = false;
+    }
+
     fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         let popup_layout = Layout::vertical([
             Constraint::Percentage((100 - percent_y) / 2),
@@ -521,6 +574,7 @@ impl Component for FileManagerPage {
             show_problem_popup: false,
             show_bucket_input: false,
             show_delete_confirmation: false,
+            show_delete_error: false,
             s3_panel_selected: true,
             default_navigation_state: NavigationState::new(None, None),
             input: Input::default().with_value(String::from("")),
@@ -535,6 +589,7 @@ impl Component for FileManagerPage {
     {
         let new_props = Props::from(state);
         FileManagerPage {
+            show_delete_error: state.s3_delete_state.is_some() || state.local_delete_state.is_some(),
             props: Props {
                 s3_history: self.props.s3_history.clone(),
                 s3_table_state: self.props.s3_table_state.clone(),
@@ -568,10 +623,27 @@ impl Component for FileManagerPage {
         } else if self.show_delete_confirmation {
             match key.code {
                 KeyCode::Enter => {
+                    match self.s3_panel_selected {
+                        true => {
+                            self.delete_selected_s3_item();
+                            self.props.s3_loading = true;
+                        }
+                        false => self.delete_selected_local_item()
+                    }
                     self.show_delete_confirmation = false;
                 }
                 KeyCode::Esc => {
                     self.show_delete_confirmation = false;
+                }
+                _ => {}
+            }
+        } else if self.show_delete_error {
+            match key.code {
+                KeyCode::Enter => {
+                    self.send_clear_delete_errors_message();
+                }
+                KeyCode::Esc => {
+                    self.send_clear_delete_errors_message();
                 }
                 _ => {}
             }
@@ -715,6 +787,7 @@ impl ComponentRender<()> for FileManagerPage {
         let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
         let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
             self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
                 .style(Style::default().fg(Color::White)).bg(Color::Blue);
@@ -749,8 +822,20 @@ impl ComponentRender<()> for FileManagerPage {
         } else if self.show_delete_confirmation {
             let area = Self::centered_rect(60, 20, frame.size());
             frame.render_widget(Clear, area); //this clears out the background
-            let block = self.make_delete_alert();
+            let block = self.make_delete_alert("Are you sure you want to delete this object?".to_string(), Color::Green);
             frame.render_widget(block, area);
+        } else if self.show_delete_error {
+            let possible_error = match (self.props.s3_delete_state.clone(), self.props.local_delete_state.clone()) {
+                (Some(err), None) => Some(err),
+                (None, Some(err)) => Some(err),
+                _ => None
+            };
+            if let Some(err) = possible_error {
+                let area = Self::centered_rect(60, 20, frame.size());
+                frame.render_widget(Clear, area); //this clears out the background
+                let block = self.make_delete_alert(err, Color::Red);
+                frame.render_widget(block, area);
+            }
         }
     }
 }

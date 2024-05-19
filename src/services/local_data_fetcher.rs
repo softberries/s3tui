@@ -1,5 +1,5 @@
 use std::path::Path;
-use color_eyre::Result;
+use color_eyre::{Report, Result};
 use tokio::fs;
 use humansize::{FileSize, file_size_opts as options};
 use std::sync::Arc;
@@ -68,6 +68,21 @@ impl LocalDataFetcher {
 
         Ok(files_info)
     }
+    pub async fn delete_directory(&self, absolute_path_str: String) -> Result<String> {
+        let result = fs::remove_dir_all(absolute_path_str.clone()).await;
+        match result {
+            Ok(_) => Ok(absolute_path_str.clone()),
+            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e)))
+        }
+    }
+
+    pub async fn delete_file(&self, absolute_path_str: String) -> Result<String> {
+        let result = fs::remove_file(absolute_path_str.clone()).await;
+        match result {
+            Ok(_) => Ok(absolute_path_str.clone()),
+            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e)))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -129,9 +144,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_home_directory() -> color_eyre::Result<()> {
-
         let fetcher = LocalDataFetcher::new();
-       
+
         let files = fetcher.read_directory(None).await?;
         assert!(!files.is_empty(), "Should contain multiple files");
         Ok(())

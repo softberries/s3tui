@@ -14,6 +14,9 @@ pub enum Action {
     SelectLocalItem { item: LocalSelectedItem },
     UnselectLocalItem { item: LocalSelectedItem },
     SelectCurrentS3Creds { item: FileCredential },
+    DeleteS3Item { item: S3SelectedItem },
+    DeleteLocalItem { item: LocalSelectedItem },
+    ClearDeletionErrors,
     RunTransfers,
     Exit,
 }

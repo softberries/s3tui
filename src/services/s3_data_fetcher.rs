@@ -20,6 +20,7 @@ use aws_sdk_s3::{
     primitives::{ByteStream, SdkBody},
     Client,
 };
+use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use bytes::Bytes;
 use color_eyre::{eyre, Report};
 use http_body::{Body, SizeHint};
@@ -362,6 +363,78 @@ impl S3DataFetcher {
             )
         }
         Ok(fetched_data)
+    }
+
+    pub async fn delete_data(&self, is_bucket: bool, bucket: Option<String>, name: String) -> eyre::Result<Option<String>> {
+        let client = self.get_s3_client(None).await;
+        if is_bucket {
+            let head_obj = client
+                .get_bucket_location()
+                .bucket(name.clone())
+                .send()
+                .await?;
+            let location = head_obj.location_constraint().map(|lc| lc.to_string()).map_or_else(
+                || None,
+                |s| if s.is_empty() { Some("us-east-1".to_string()) } else { Some(s) },
+            );
+            let creds = self.credentials.clone();
+            let default_region = self.default_region.clone();
+            let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone().unwrap_or(default_region), selected: false };
+            let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
+            let response = client_with_location
+                .delete_bucket()
+                .bucket(name.clone())
+                .send()
+                .await;
+            match response {
+                Ok(_) => {
+                    tracing::info!("bucket deleted: {}", name);
+                    Ok(None)
+                }
+                Err(e) => {
+                    tracing::error!("error deleting bucket: {}, {:?}", name, e);
+                    Ok(Some(e.into_service_error().message().unwrap_or("Error deleting bucket").to_string()))
+                }
+            }
+        } else {
+            tracing::info!("Deleting object: {:?}, {:?}", name, bucket);
+            match bucket {
+                Some(b) => {
+                    let head_obj = client
+                        .get_bucket_location()
+                        .bucket(b.clone())
+                        .send()
+                        .await?;
+                    let location = head_obj.location_constraint().map(|lc| lc.to_string()).map_or_else(
+                        || None,
+                        |s| if s.is_empty() { Some("us-east-1".to_string()) } else { Some(s) },
+                    );
+                    let creds = self.credentials.clone();
+                    let default_region = self.default_region.clone();
+                    let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone().unwrap_or(default_region), selected: false };
+                    let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
+                    let response = client_with_location
+                        .delete_object()
+                        .key(name.clone())
+                        .bucket(b.clone().to_owned())
+                        .send()
+                        .await;
+                    match response {
+                        Ok(_) => {
+                            tracing::info!("S3 Object deleted, bucket: {:?}, name: {:?}", b, name);
+                            Ok(None)
+                        }
+                        Err(e) => {
+                            tracing::error!("Cannot delete object, bucket: {:?}, name: {:?}, error: {:?}", b, name, e);
+                            Ok(Some(format!("Cannot delete object, {:?}", e.into_service_error().message().unwrap_or(""))))
+                        }
+                    }
+                }
+                None => {
+                    Ok(Some("No bucket specified!".into()))
+                }
+            }
+        }
     }
 
     async fn get_s3_client(&self, creds: Option<FileCredential>) -> Client {
