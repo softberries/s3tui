@@ -3,12 +3,14 @@ name = "s3tui"
 version = "0.1.0"
 authors = ["Krzysztof Grajek <krzysztof.grajek@softwaremill.com>"]
 edition = "2021"
-description = "Simple TUI application for multiple s3 accounts operations"
+description = "Simple TUI application for multiple s3 account operations"
 license = "MIT"
 repository = "https://github.com/softberries/s3tui"
+homepage = "https://github.com/softberries/s3tui"
 readme = "README.md"
 keywords = ["s3", "aws", "ratatui", "tui", "softwaremill"]
 categories = ["command-line-utilities", "asynchronous"]
+documentation = "https://docs.rs/s3tui"
 
 [dependencies]
 better-panic = "0.3.0"
