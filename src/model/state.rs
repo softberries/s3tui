@@ -32,6 +32,7 @@ pub struct State {
     pub current_creds: FileCredential,
     pub local_delete_state: Option<String>,
     pub s3_delete_state: Option<String>,
+    pub create_bucket_state: Option<String>,
 }
 
 impl State {
@@ -106,6 +107,10 @@ impl State {
 
     pub fn set_s3_delete_error(&mut self, error_str: Option<String>) {
         self.s3_delete_state = error_str;
+    }
+
+    pub fn set_create_bucket_error(&mut self, error_str: Option<String>) {
+        self.create_bucket_state = error_str;
     }
 
     pub fn set_current_local_path(&mut self, path: String) {

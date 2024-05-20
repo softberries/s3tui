@@ -195,6 +195,20 @@ impl StateStore {
         });
     }
 
+    async fn create_bucket(&self, name: String, s3_data_fetcher: S3DataFetcher, create_bucket_tx: UnboundedSender<Option<String>>) {
+        tokio::spawn(async move {
+            match s3_data_fetcher.create_bucket(name.clone(), s3_data_fetcher.default_region.clone()).await {
+                Ok(data) => {
+                    let _ = create_bucket_tx.send(data);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to create S3 bucket: {}", e);
+                    let _ = create_bucket_tx.send(Some(format!("Failed to create bucket: {}", e)));
+                }
+            }
+        });
+    }
+
     fn get_current_s3_fetcher(state: &State) -> S3DataFetcher {
         S3DataFetcher::new(state.current_creds.clone())
     }
@@ -220,6 +234,7 @@ impl StateStore {
         let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
         let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<UploadProgressItem>();
         let (download_tx, mut download_rx) = mpsc::unbounded_channel::<DownloadProgressItem>();
+        let (create_bucket_tx, mut create_bucket_rx) = mpsc::unbounded_channel::<Option<String>>();
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
         self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
@@ -294,9 +309,17 @@ impl StateStore {
                             self.delete_local_data(item.clone(), local_data_fetcher.clone(), local_deleted_tx.clone()).await;
                             self.fetch_local_data(Some(item.path.clone()), local_data_fetcher.clone(), local_tx.clone()).await;
                         },
+                        Action::CreateBucket {name} => {
+                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                            tracing::info!("creating s3 bucket...{:?}", name.clone());
+                            self.create_bucket(name.clone(), s3_data_fetcher.clone(), create_bucket_tx.clone()).await;
+                            self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
+                        },
                         Action::ClearDeletionErrors => {
                             state.s3_delete_state = None;
                             state.local_delete_state = None;
+                            state.create_bucket_state = None;
+                            self.state_tx.send(state.clone())?;
                         }   
                     },
                     Some(item) = selected_s3_transfers_rx.recv() => {
@@ -335,6 +358,10 @@ impl StateStore {
                         state.set_s3_delete_error(error_str);
                         self.state_tx.send(state.clone())?;
                     },
+                    Some(error_str) = create_bucket_rx.recv() => {
+                        state.set_create_bucket_error(error_str);
+                        self.state_tx.send(state.clone())?;
+                    }
 
             // Catch and handle interrupt signal to gracefully shutdown
             Ok(interrupted) = interrupt_rx.recv() => {

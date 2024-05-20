@@ -16,6 +16,7 @@ pub enum Action {
     SelectCurrentS3Creds { item: FileCredential },
     DeleteS3Item { item: S3SelectedItem },
     DeleteLocalItem { item: LocalSelectedItem },
+    CreateBucket { name: String },
     ClearDeletionErrors,
     RunTransfers,
     Exit,

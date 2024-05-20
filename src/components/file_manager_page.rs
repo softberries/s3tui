@@ -32,6 +32,7 @@ struct Props {
     current_s3_creds: FileCredential,
     s3_delete_state: Option<String>,
     local_delete_state: Option<String>,
+    create_bucket_state: Option<String>,
 }
 
 impl From<&State> for Props {
@@ -52,6 +53,7 @@ impl From<&State> for Props {
             current_s3_creds: st.current_creds,
             s3_delete_state: st.s3_delete_state,
             local_delete_state: st.local_delete_state,
+            create_bucket_state: st.create_bucket_state,
         }
     }
 }
@@ -539,7 +541,7 @@ impl FileManagerPage {
             self.show_delete_confirmation = false;
         }
     }
-    
+
     fn send_clear_delete_errors_message(&mut self) {
         let _ = self.action_tx.send(Action::ClearDeletionErrors);
         self.show_delete_error = false;
@@ -590,6 +592,7 @@ impl Component for FileManagerPage {
         let new_props = Props::from(state);
         FileManagerPage {
             show_delete_error: state.s3_delete_state.is_some() || state.local_delete_state.is_some(),
+            show_bucket_input: state.create_bucket_state.is_some(),
             props: Props {
                 s3_history: self.props.s3_history.clone(),
                 s3_table_state: self.props.s3_table_state.clone(),
@@ -611,11 +614,15 @@ impl Component for FileManagerPage {
         if self.show_bucket_input {
             match key.code {
                 KeyCode::Enter => {
+                    let _ = self.action_tx.send(Action::CreateBucket {
+                        name: self.input.value().to_string()
+                    });
                     self.show_bucket_input = false;
-                }
+                },
                 KeyCode::Esc => {
                     self.show_bucket_input = false;
-                }
+                    self.send_clear_delete_errors_message();
+                },
                 _ => {
                     let _ = self.input.handle_event(&crossterm::event::Event::Key(key));
                 }
@@ -806,13 +813,16 @@ impl ComponentRender<()> for FileManagerPage {
         } else if self.show_bucket_input {
             let block = self.make_bucket_name_input();
             let area = Self::centered_rect(40, 20, frame.size());
-            let error_paragraph = Paragraph::new("* Possible error message")
-                .style(Style::default().fg(Color::Red));
+
             frame.render_widget(Clear, area); //this clears out the background
             frame.render_widget(block, area);
-            let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
-            frame.render_widget(Clear, error_rect);
-            frame.render_widget(error_paragraph, error_rect);
+            if let Some(error) = self.props.create_bucket_state.clone() {
+                let error_paragraph = Paragraph::new(format!("* {:?}", error))
+                    .style(Style::default().fg(Color::Red));
+                let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
+                frame.render_widget(Clear, error_rect);
+                frame.render_widget(error_paragraph, error_rect);
+            }
             frame.set_cursor(
                 area.x
                     + self.input.visual_cursor() as u16

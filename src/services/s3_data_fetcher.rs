@@ -20,6 +20,7 @@ use aws_sdk_s3::{
     primitives::{ByteStream, SdkBody},
     Client,
 };
+use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
 use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use bytes::Bytes;
 use color_eyre::{eyre, Report};
@@ -29,7 +30,7 @@ use crate::model::upload_progress_item::UploadProgressItem;
 
 #[derive(Clone)]
 pub struct S3DataFetcher {
-    default_region: String,
+    pub default_region: String,
     credentials: Credentials,
 }
 
@@ -363,6 +364,27 @@ impl S3DataFetcher {
             )
         }
         Ok(fetched_data)
+    }
+
+    pub async fn create_bucket(&self, name: String, region: String) -> eyre::Result<Option<String>> {
+        let client = self.get_s3_client(None).await;
+        let constraint = BucketLocationConstraint::from(region.as_str());
+        let cfg = CreateBucketConfiguration::builder()
+            .location_constraint(constraint)
+            .build();
+        match client.create_bucket()
+            .create_bucket_configuration(cfg)
+            .bucket(name.clone())
+            .send().await {
+            Ok(_) => {
+                tracing::info!("Bucket created");
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::error!("Cannot create bucket");
+                Ok(Some(e.into_service_error().message().unwrap_or("Cannot create bucket").to_string()))
+            }
+        }
     }
 
     pub async fn delete_data(&self, is_bucket: bool, bucket: Option<String>, name: String) -> eyre::Result<Option<String>> {
