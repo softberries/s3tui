@@ -1,3 +1,4 @@
+//! This module provides functionality for passing state to displayed components
 use std::{
     io::{self, Stdout},
     time::Duration,
@@ -26,6 +27,7 @@ use crate::termination::Interrupted;
 
 const RENDERING_TICK_RATE: Duration = Duration::from_millis(250);
 
+/// Handles cross-term events together with state and interrupt actions
 pub struct UiManager {
     action_tx: mpsc::UnboundedSender<Action>,
 }

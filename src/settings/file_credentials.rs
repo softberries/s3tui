@@ -4,6 +4,7 @@ use std::path::Path;
 use color_eyre::{eyre, Report};
 use crate::utils::get_data_dir;
 
+/// Representation of the credentials stored in your configuration
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileCredential {
     pub name: String,

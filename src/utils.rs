@@ -38,6 +38,7 @@ fn stop() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Eyre hook to display a bit more user-friendly messages in case of panic
 pub fn initialize_panic_handler() -> eyre::Result<()> {
   let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
     .panic_section(format!("This is a bug. Consider reporting it at {}", env!("CARGO_PKG_REPOSITORY")))
@@ -88,6 +89,8 @@ pub fn initialize_panic_handler() -> eyre::Result<()> {
   Ok(())
 }
 
+/// Gets the user specified data directory
+/// Eventually takes the system default location
 pub fn get_data_dir() -> PathBuf {
   let directory = if let Some(s) = DATA_FOLDER.clone() {
     s
@@ -99,6 +102,8 @@ pub fn get_data_dir() -> PathBuf {
   directory
 }
 
+/// Gets the user specified configuration directory
+/// Eventually takes the system default location
 pub fn get_config_dir() -> PathBuf {
   let directory = if let Some(s) = CONFIG_FOLDER.clone() {
     s
@@ -110,6 +115,8 @@ pub fn get_config_dir() -> PathBuf {
   directory
 }
 
+/// Sets up logging capabilities for the application
+/// The logs are stored in the data directory
 pub fn initialize_logging() -> eyre::Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;

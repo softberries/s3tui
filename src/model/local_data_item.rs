@@ -1,3 +1,4 @@
+/// Represents an item (file/directory) on your local machine
 #[derive(Debug, Clone)]
 pub struct LocalDataItem {
     pub name: String,

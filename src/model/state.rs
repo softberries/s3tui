@@ -1,3 +1,4 @@
+//! This module provides functionality for keeping the application state
 use url::Url;
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::local_data_item::LocalDataItem;
@@ -17,6 +18,8 @@ pub enum ActivePage {
     Help,
 }
 
+/// Represents entire state of the application, each page transforms this information for 
+/// suitable Props object
 #[derive(Debug, Clone, Default)]
 pub struct State {
     pub active_page: ActivePage,

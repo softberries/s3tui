@@ -1,3 +1,12 @@
+//! # S3 TUI Application
+//!
+//! This crate provides a simple `S3` client for managing your resources in s3 buckets.
+//! `s3tui` is a powerful terminal-based application that enables seamless file transfers between
+//! your local machine and multiple AWS S3 accounts. 
+//! Crafted with the `ratatui` Rust TUI framework, `s3tui` provides a robust user interface for managing 
+//! uploads and downloads simultaneously in both directions, 
+//! enhancing your productivity with `S3` services.
+
 #![forbid(unsafe_code)]
 mod termination;
 mod state_store;

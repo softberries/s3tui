@@ -4,6 +4,9 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::model::action::Action;
 use crate::model::state::State;
 
+/// Represents a parent of every UI component in the application
+/// The AppRouter/Component/State structure was inspired by another project
+/// `<https://github.com/Yengas/rust-chat-server/>` and Ratatui template application
 pub trait Component {
     fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
         where

@@ -28,6 +28,7 @@ use http_body::{Body, SizeHint};
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::upload_progress_item::UploadProgressItem;
 
+/// Handles interactions with the s3 services through AWS sdk
 #[derive(Clone)]
 pub struct S3DataFetcher {
     pub default_region: String,
@@ -53,6 +54,7 @@ impl ProgressTracker {
     }
 }
 
+/// Handles the progress updates (copy of aws sdk s3 example)
 #[pin_project::pin_project]
 pub struct ProgressBody<InnerBody> {
     #[pin]

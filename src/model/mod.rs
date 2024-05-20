@@ -1,3 +1,5 @@
+//! This module provides common objects used throughout the entire application
+
 pub mod action;
 pub mod state;
 pub mod s3_data_item;

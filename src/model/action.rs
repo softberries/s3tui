@@ -1,8 +1,10 @@
+//! This module provides list of all possible actions which can be executed on the UI
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::state::ActivePage;
 use crate::settings::file_credentials::FileCredential;
 
+/// List of all possible actions a user can execute
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Navigate { page: ActivePage },

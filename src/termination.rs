@@ -1,3 +1,4 @@
+//! This module provides functionality for terminating the application
 use color_eyre::eyre;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
@@ -9,6 +10,7 @@ pub enum Interrupted {
     UserInt,
 }
 
+/// Responsible for handling termination events
 #[derive(Debug, Clone)]
 pub struct Terminator {
     interrupt_tx: broadcast::Sender<Interrupted>,

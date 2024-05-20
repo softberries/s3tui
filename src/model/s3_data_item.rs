@@ -1,3 +1,6 @@
+//! This module provides functionality for representing s3 data
+
+/// Represents a file in s3 bucket
 #[derive(Debug, Clone)]
 pub struct FileInfo {
     pub file_name: String,
@@ -6,13 +9,14 @@ pub struct FileInfo {
     pub path: String,
     pub is_directory: bool,
 }
+/// Represents a bucket on s3
 #[derive(Debug, Clone)]
 pub struct BucketInfo {
     pub bucket: Option<String>,
     pub region: Option<String>,
     pub is_bucket: bool,
 }
-
+/// Keeps the information about fetched data from s3
 #[derive(Debug, Clone)]
 pub struct S3DataItem {
     pub bucket: Option<String>,

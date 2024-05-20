@@ -1,6 +1,7 @@
 use crate::model::s3_data_item::S3DataItem;
 use crate::settings::file_credentials::FileCredential;
 
+/// Represents an item (file/directory/bucket) on your s3 account
 #[derive(Debug, Clone)]
 pub struct S3SelectedItem {
     pub bucket: Option<String>,

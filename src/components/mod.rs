@@ -1,3 +1,5 @@
+//! This module provides implementations for different UI components used by s3tui app
+
 pub mod app_router;
 pub mod component;
 pub mod file_manager_page;

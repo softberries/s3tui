@@ -1,6 +1,7 @@
 use crate::model::local_data_item::LocalDataItem;
 use crate::settings::file_credentials::FileCredential;
 
+/// Keeps the information about the selected file which is later displayed on the transfers page
 #[derive(Debug, Clone)]
 pub struct LocalSelectedItem {
     pub name: String,

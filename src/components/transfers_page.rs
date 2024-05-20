@@ -27,6 +27,7 @@ impl From<&State> for Props {
     }
 }
 
+/// Page displaying selected transfers and their status
 pub struct TransfersPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,

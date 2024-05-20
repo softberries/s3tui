@@ -1,3 +1,4 @@
+//! This module provides functionality for interactions between UI and state
 use std::path::Path;
 use std::time::Duration;
 use color_eyre::eyre;
@@ -16,6 +17,7 @@ use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
 
+/// Handles all the actions, calls methods on external services and updates the state when necessary 
 pub struct StateStore {
     state_tx: UnboundedSender<State>,
 }

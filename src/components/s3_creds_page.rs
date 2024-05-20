@@ -22,6 +22,9 @@ impl From<&State> for Props {
     }
 }
 
+/// Page displaying different s3 configuration from your config directory
+/// Selecting an item on this page will use specially configured s3 client up to the next change
+/// or quitting the app
 pub struct S3CredsPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,

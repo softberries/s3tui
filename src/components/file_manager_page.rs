@@ -58,6 +58,9 @@ impl From<&State> for Props {
     }
 }
 
+/// Page displaying s3 and local items in the current path
+/// This is the main page of the application where most of the interactions are happening
+/// You can always navigate to this page from the other pages by clicking 'Esc' key
 pub struct FileManagerPage {
     /// Action sender
     pub action_tx: UnboundedSender<Action>,

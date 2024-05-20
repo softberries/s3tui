@@ -28,6 +28,7 @@ impl From<&State> for Props {
     }
 }
 
+/// Page listing all available commands, accessible with '?'
 pub struct HelpPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,

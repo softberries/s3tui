@@ -23,6 +23,7 @@ impl From<&State> for Props {
     }
 }
 
+/// Handles transitions between different TUI pages and passes on the state transitions
 pub struct AppRouter {
     props: Props,
     file_manager_page: FileManagerPage,

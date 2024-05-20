@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::model::local_data_item::LocalDataItem;
 
+/// Handles information with the local file system 
 #[derive(Clone, Default)]
 pub struct LocalDataFetcher {
     current_dir: Arc<Mutex<String>>,
