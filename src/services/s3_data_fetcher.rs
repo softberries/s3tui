@@ -177,11 +177,12 @@ impl S3DataFetcher {
             // .buffer_size(2048)
             .build()
             .await?;
-
+        let key = item.destination_path;//Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
+        //destination_path
         let request = client
             .put_object()
             .bucket(item.destination_bucket)
-            .key(item.name)
+            .key(key)
             .body(body);
 
         let customized = request

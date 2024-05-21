@@ -63,31 +63,33 @@ impl StateStore {
 
     async fn upload_data(&self, s3_data_fetcher: &S3DataFetcher, local_selected_items: Vec<LocalSelectedItem>, selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>, upload_tx: UnboundedSender<UploadProgressItem>) {
         for item in local_selected_items {
-            let local_tx = selected_local_transfers_tx.clone();
-            let up_tx = upload_tx.clone();
-            let fetcher = s3_data_fetcher.clone();
-            tokio::spawn(async move {
-                match fetcher.upload_item(item.clone(), up_tx).await {
-                    Ok(_) => {
-                        if local_tx.send(item.clone()).is_err() {
-                            tracing::error!("Failed to send uploaded item");
+            if !item.is_directory {
+                let local_tx = selected_local_transfers_tx.clone();
+                let up_tx = upload_tx.clone();
+                let fetcher = s3_data_fetcher.clone();
+                tokio::spawn(async move {
+                    match fetcher.upload_item(item.clone(), up_tx).await {
+                        Ok(_) => {
+                            if local_tx.send(item.clone()).is_err() {
+                                tracing::error!("Failed to send uploaded item");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to upload data: {}", e);
+                            let orig_item = item.clone();
+                            let errored_item = LocalSelectedItem {
+                                error: Some(e.to_string()),
+                                transferred: false,
+                                progress: 0f64,
+                                ..orig_item
+                            };
+                            if local_tx.send(errored_item).is_err() {
+                                tracing::error!("Failed to send item in error");
+                            }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to upload data: {}", e);
-                        let orig_item = item.clone();
-                        let errored_item = LocalSelectedItem {
-                            error: Some(e.to_string()),
-                            transferred: false,
-                            progress: 0f64,
-                            ..orig_item
-                        };
-                        if local_tx.send(errored_item).is_err() {
-                            tracing::error!("Failed to send item in error");
-                        }
-                    }
-                }
-            });
+                });
+            }
         }
     }
 

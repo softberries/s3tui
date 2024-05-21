@@ -377,11 +377,7 @@ impl FileManagerPage {
         if let Some(p) = prefix {
             // Navigate into a new directory within the current bucket
             let current_state = self.current_state().clone();
-            let new_prefix = match &current_state.current_prefix {
-                Some(current_prefix) => format!("{}/{}", current_prefix, p),
-                None => p,
-            };
-            self.props.s3_history.push(NavigationState::new(current_state.current_bucket.clone(), Some(new_prefix)));
+            self.props.s3_history.push(NavigationState::new(current_state.current_bucket.clone(), Some(p)));
         }
     }
 
@@ -412,8 +408,8 @@ impl FileManagerPage {
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
         {
             let sr = selected_row.clone();
-            //disable sending whole directories/buckets
-            if !sr.is_directory && !sr.is_bucket {
+            //disable sending whole buckets
+            if !sr.is_bucket {
                 let cc = self.props.current_s3_creds.clone();
                 let creds = FileCredential {
                     default_region: sr.region.unwrap_or(cc.default_region.clone()),
@@ -440,23 +436,25 @@ impl FileManagerPage {
             self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
         {
             let sr = selected_row.clone();
-            //disable selecting whole directories
-            if !sr.is_directory {
-                if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
-                    let selected_item = LocalSelectedItem::new(
-                        sr.name,
-                        sr.path,
-                        sr.is_directory,
-                        selected_bucket,
-                        self.props.current_s3_path.clone(),
-                        self.props.current_s3_creds.clone(),
-                    );
-                    let _ = self.action_tx.send(Action::SelectLocalItem {
-                        item: selected_item
-                    });
+            if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
+                let destination_path = if sr.is_directory {
+                    sr.name.clone()
                 } else {
-                    self.show_problem_popup = true;
-                }
+                    "/".to_string()
+                };
+                let selected_item = LocalSelectedItem::new(
+                    sr.name.clone(),
+                    sr.path,
+                    sr.is_directory,
+                    selected_bucket,
+                    destination_path,
+                    self.props.current_s3_creds.clone(),
+                );
+                let _ = self.action_tx.send(Action::SelectLocalItem {
+                    item: selected_item
+                });
+            } else {
+                self.show_problem_popup = true;
             }
         }
     }
@@ -574,7 +572,6 @@ impl Component for FileManagerPage {
     {
         FileManagerPage {
             action_tx: action_tx.clone(),
-            // set the props
             props: Props::from(state),
             show_problem_popup: false,
             show_bucket_input: false,

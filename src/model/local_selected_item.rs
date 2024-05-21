@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::{Path, PathBuf};
 use crate::model::local_data_item::LocalDataItem;
 use crate::settings::file_credentials::FileCredential;
 
@@ -12,7 +14,7 @@ pub struct LocalSelectedItem {
     pub transferred: bool,
     pub s3_creds: FileCredential,
     pub progress: f64,
-    pub error: Option<String>
+    pub error: Option<String>,
 }
 
 impl LocalSelectedItem {
@@ -26,7 +28,7 @@ impl LocalSelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
-            error: None
+            error: None,
         }
     }
 
@@ -41,6 +43,53 @@ impl LocalSelectedItem {
             s3_creds,
             progress: 0f64,
             error: None,
+        }
+    }
+
+    pub fn list_directory_items(item: &LocalSelectedItem) -> Vec<LocalSelectedItem> {
+        let path = Path::new(&item.path);
+
+        if item.is_directory {
+            let mut items = Vec::new();
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        // Recursively process subdirectories
+                        items.extend(Self::list_directory_items(&LocalSelectedItem {
+                            name: path.file_name().unwrap().to_string_lossy().into_owned(),
+                            path: path.to_string_lossy().into(),
+                            is_directory: true,
+                            destination_bucket: item.destination_bucket.clone(),
+                            destination_path: PathBuf::from(&item.destination_path)
+                                .join(path.file_name().unwrap().to_string_lossy().into_owned())
+                                .to_string_lossy().into(),
+                            transferred: false,
+                            s3_creds: item.s3_creds.clone(),
+                            progress: 0.0,
+                            error: None,
+                        }));
+                    } else {
+                        // Process files
+                        items.push(LocalSelectedItem {
+                            name: path.file_name().unwrap().to_string_lossy().into_owned(),
+                            path: path.to_string_lossy().into(),
+                            is_directory: false,
+                            destination_bucket: item.destination_bucket.clone(),
+                            destination_path: PathBuf::from(&item.destination_path)
+                                .join(path.file_name().unwrap().to_string_lossy().into_owned())
+                                .to_string_lossy().into(),
+                            transferred: false,
+                            s3_creds: item.s3_creds.clone(),
+                            progress: 0.0,
+                            error: None,
+                        });
+                    }
+                }
+            }
+            items
+        } else {
+            vec![item.clone()]
         }
     }
 
@@ -75,7 +124,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
         let res = LocalSelectedItem::new(
             "file1.txt".into(),
@@ -83,7 +132,7 @@ mod tests {
             false,
             "test-bucket".into(),
             "".to_string(),
-            Default::default()
+            Default::default(),
         );
         assert_eq!(item, res);
     }
@@ -96,7 +145,7 @@ mod tests {
             false,
             "test-bucket".into(),
             "".to_string(),
-            Default::default()
+            Default::default(),
         );
         let res = item.to_columns();
         assert_eq!(res.len(), 7);
@@ -120,7 +169,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: Some("Error".into())
+            error: Some("Error".into()),
         };
         let res = item.to_columns();
         assert_eq!(res.len(), 7);

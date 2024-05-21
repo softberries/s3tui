@@ -129,7 +129,14 @@ impl State {
     }
 
     pub fn add_local_selected_item(&mut self, item: LocalSelectedItem) {
-        self.local_selected_items.push(item);
+        if item.is_directory {
+            let items = LocalSelectedItem::list_directory_items(&item);
+            self.local_selected_items.push(item);
+            self.local_selected_items.extend(items);
+        } else {
+            self.local_selected_items.push(item);
+        }
+
     }
 
     pub fn remove_s3_selected_item(&mut self, item: S3SelectedItem) {

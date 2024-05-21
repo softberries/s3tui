@@ -129,7 +129,7 @@ impl TransfersPage {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
             Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.local_selected_items.iter().map(|item| TransfersPage::get_local_row(self, item));
+        let rows = self.props.local_selected_items.iter().filter(|item| !item.is_directory).map(|item| TransfersPage::get_local_row(self, item));
         let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
