@@ -1,4 +1,4 @@
-<h1 align="center">
+<div style="text-align: center;">
 
 
             _____ __        _ 
@@ -10,7 +10,7 @@
 
 [![CI][s0]][l0] [![crates][s1]][l1] ![MIT][s2] [![UNSAFE][s3]][l3] [![TWEET][s6]][l6] [![dep_status][s7]][l7]
 
-</h1>
+</div>
 
 [s0]: https://github.com/softberries/s3tui/actions/workflows/rust.yml/badge.svg
 [l0]: https://github.com/softberries/s3tui/actions/workflows/rust.yml
@@ -60,6 +60,8 @@
     export S3TUI_LOGLEVEL=info
    ```
    Alternatively, use the default paths set according to the XDG Base Directory Specification.
+ 
+   You can check your configuration by running `s3tui --version` which will show you the paths currently in use.
 
 2. **Add your s3 credentials**
     - Add as many configurations under `creds` directory in your `S3TUI_DATA`
@@ -69,7 +71,13 @@
       secret_key=YOUR_SECRET_KEY
       default_region=eu-west-1
     ```
-2. **Installation**:
+2. **Installation from crates.io**:
+    - Ensure you have Rust and `cargo` installed.
+    - Install with cargo
+    ```bash
+      cargo install s3tui
+    ```
+3. **Building locally**:
     - Ensure you have Rust and `cargo` installed.
     - Clone the repository and build the project:
     ```bash
@@ -78,7 +86,7 @@
       cargo build --release
     ```
 
-3. **Running s3tui**:
+4**Running s3tui**:
     - Navigate to the project directory and run:
     ```bash
       ./target/release/s3tui
