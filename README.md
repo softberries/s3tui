@@ -26,9 +26,7 @@
 
 ---
 
-# s3tui (WIP) - AWS S3 Transfer CLI
-
-**Please note that this project has no releases yet and its a work in progress. Use at your own risk.**
+# s3tui - AWS S3 Transfer CLI
 
 `s3tui` is a ~~powerful~~ terminal-based application that enables seamless file transfers between your local machine and multiple AWS S3 accounts. Crafted with the [ratatui](https://github.com/ratatui-org/ratatui) Rust TUI framework, `s3tui` provides a robust user interface for managing uploads and downloads simultaneously in both directions, enhancing your productivity with S3 services.
 
