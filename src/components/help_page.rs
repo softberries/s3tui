@@ -16,7 +16,7 @@ impl From<&State> for Props {
                 vec!["s".to_string(), "select account currently in use".to_string()],
                 vec!["Esc".to_string(), "move back to the file manager window".to_string()],
                 vec!["↕ / j / k".to_string(), "move up/down on the lists".to_string()],
-                vec!["↔ / j / k".to_string(), "select/deselect files to transfer".to_string()],
+                vec!["↔".to_string(), "select/deselect files to transfer".to_string()],
                 vec!["c".to_string(), "create bucket".to_string()],
                 vec!["⌫ / Del".to_string(), "delete item".to_string()],
                 vec!["t".to_string(), "show currently selected files to transfer".to_string()],
