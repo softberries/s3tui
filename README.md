@@ -37,9 +37,12 @@
 - **Multiple Account Support**: Easily configure and switch between different S3 accounts during runtime using the 's' command.
 - **Simultaneous Transfers**: Transfer multiple files at once, both to and from S3, thanks to multithreading capabilities powered by the [tokio](https://github.com/tokio-rs/tokio) library.
 - **Interactive Commands**:
-    - `s` - Move back to the file manager window.
-    - `Esc` - Select or deselect files for transfer.
-    - `↔ / j / k` - Navigate up or down the file lists.
+    - `s` - select account currently in use.
+    - `Esc` - move back to the file manager window.
+    - `↕ / j / k` - move up/down on the lists.
+    - `↔` - select/deselect files to transfer.
+    - `c` - create bucket.
+    - `⌫ / Del` - delete item.
     - `t` - Display currently selected files for transfer.
     - `r` - Execute the selected transfers.
     - `q` - Quit the application.
