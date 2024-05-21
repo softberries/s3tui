@@ -81,13 +81,16 @@ productivity with S3 services.
    You can check your configuration by running `s3tui --version` which will show you the paths currently in use.
 
 2. **Add your s3 credentials**
-    - Add as many configurations under `creds` directory in your `S3TUI_DATA`
+    - Add as many configurations under `creds` directory (inside your `.data` directory specified with `S3TUI_DATA` env variable)
     - The file should look like the one below:
-    ```bash
-      access_key=YOUR_ACCESS_KEY
-      secret_key=YOUR_SECRET_KEY
-      default_region=eu-west-1
-    ```
+   
+```bash
+access_key=YOUR_ACCESS_KEY
+secret_key=YOUR_SECRET_KEY
+default_region=eu-west-1
+```
+Make sure there is a new line at the end and there are no leading spaces on the lines.
+
 3. **Installation from crates.io**:
     - Ensure you have Rust and `cargo` installed.
     - Install with cargo
