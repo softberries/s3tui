@@ -21,7 +21,7 @@
 [l3]: https://github.com/rust-secure-code/safety-dance/
 [s6]: https://img.shields.io/twitter/follow/grajo?label=follow&style=social
 [l6]: https://twitter.com/intent/follow?screen_name=grajo
-[s7]: https://deps.rs/repo/github/softberries/s3ui/status.svg
+[s7]: https://deps.rs/repo/github/softberries/s3tui/status.svg
 [l7]: https://deps.rs/repo/github/softberries/s3tui
 
 ---
