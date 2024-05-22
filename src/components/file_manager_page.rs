@@ -214,28 +214,28 @@ impl FileManagerPage {
     fn get_local_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.local_data.iter().map(|item| FileManagerPage::get_local_row(self, item));
+        let rows = self.props.local_data.iter().map(|item| FileManagerPage::get_local_row(self, item, focus_color));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let block = self.get_home_local_block();
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
+            .highlight_style(Style::default().fg(focus_color).bold().add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
 
-    fn get_s3_row(&self, item: &S3DataItem) -> Row {
+    fn get_s3_row(&self, item: &S3DataItem, focus_color: Color) -> Row {
         if Self::contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
-            Row::new(item.to_columns().clone()).add_modifier(Modifier::REVERSED)
+            Row::new(item.to_columns().clone()).fg(focus_color).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
         }
     }
 
-    fn get_local_row(&self, item: &LocalDataItem) -> Row {
+    fn get_local_row(&self, item: &LocalDataItem, focus_color: Color) -> Row {
         if Self::contains_local_item(item, &self.props.local_selected_items, &self.props.current_s3_creds) {
-            Row::new(item.to_columns().clone()).add_modifier(Modifier::REVERSED)
+            Row::new(item.to_columns().clone()).fg(focus_color).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
         }
@@ -254,13 +254,13 @@ impl FileManagerPage {
     fn get_s3_table(&self, focus_color: Color) -> Table {
         let header =
             Row::new(vec!["Name", "Size", "Type"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_s3_row(self, item));
+        let rows = self.props.s3_data.iter().map(|item| FileManagerPage::get_s3_row(self, item, focus_color));
         let widths = [Constraint::Length(60), Constraint::Length(20), Constraint::Length(20)];
         let block = self.get_home_s3_block();
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
+            .highlight_style(Style::default().fg(focus_color).bold().add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)]);
         table
     }
