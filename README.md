@@ -53,13 +53,14 @@ productivity with S3 services.
 - **Simultaneous Transfers**: Transfer multiple files at once, both to and from S3, thanks to multithreading
   capabilities powered by the [tokio](https://github.com/tokio-rs/tokio) library.
 - **Interactive Commands**:
+    - `Tab,↔` - move between local and s3 panel
     - `s` - select account currently in use.
     - `Esc` - move back to the file manager window.
     - `↕ / j / k` - move up/down on the lists.
-    - `↔` - select/deselect files to transfer.
+    - `t` - select/deselect files to transfer.
     - `c` - create bucket.
     - `⌫ / Del` - delete item.
-    - `t` - Display currently selected files for transfer.
+    - `l` - Display currently selected files for transfer.
     - `r` - Execute the selected transfers.
     - `q` - Quit the application.
     - `?` - Access the help page with all available commands.
