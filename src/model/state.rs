@@ -125,7 +125,16 @@ impl State {
     }
 
     pub fn add_s3_selected_item(&mut self, item: S3SelectedItem) {
-        self.s3_selected_items.push(item);
+        if item.is_bucket {
+            tracing::info!("bucket item: {:?}", item);
+            todo!()
+        } else if item.is_directory {
+            tracing::info!("directory item: {:?}", item);
+            todo!()
+        } else {
+            self.s3_selected_items.push(item);
+        }
+
     }
 
     pub fn add_local_selected_item(&mut self, item: LocalSelectedItem) {

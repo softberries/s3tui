@@ -320,7 +320,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty(){
+        if !self.props.s3_data.is_empty() {
             self.props.s3_table_state.select(Some(i));
         }
     }
@@ -336,7 +336,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty(){
+        if !self.props.s3_data.is_empty() {
             self.props.s3_table_state.select(Some(i));
         }
     }
@@ -352,7 +352,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty(){
+        if !self.props.local_data.is_empty() {
             self.props.local_table_state.select(Some(i));
         }
     }
@@ -368,7 +368,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty(){
+        if !self.props.local_data.is_empty() {
             self.props.local_table_state.select(Some(i));
         }
     }
@@ -443,32 +443,28 @@ impl FileManagerPage {
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
         {
             let sr = selected_row.clone();
-            //disable sending whole buckets
-            if !sr.is_bucket {
-                let cc = self.props.current_s3_creds.clone();
-                let creds = FileCredential {
-                    default_region: sr.region.unwrap_or(cc.default_region.clone()),
-                    ..cc
-                };
-                let selected_item = S3SelectedItem::new(
-                    sr.name,
-                    sr.bucket,
-                    Some(sr.path),
-                    sr.is_directory,
-                    sr.is_bucket,
-                    self.props.current_local_path.clone(),
-                    creds,
-                );
-                if !self.props.s3_selected_items.contains(&selected_item) {
-                    let _ = self.action_tx.send(Action::SelectS3Item {
-                        item: selected_item
-                    });
-                } else {
-                    let _ = self.action_tx.send(Action::UnselectS3Item {
-                        item: selected_item
-                    });
-                }
-
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds,
+            );
+            if !self.props.s3_selected_items.contains(&selected_item) {
+                let _ = self.action_tx.send(Action::SelectS3Item {
+                    item: selected_item
+                });
+            } else {
+                let _ = self.action_tx.send(Action::UnselectS3Item {
+                    item: selected_item
+                });
             }
         }
     }
