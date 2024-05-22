@@ -214,7 +214,7 @@ impl TransfersPage {
         let widths = [Constraint::Length(5), Constraint::Length(15), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)"))
+            .block(Block::default().borders(Borders::ALL).title("Transfers List"))
             .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(5), Constraint::Percentage(15), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
