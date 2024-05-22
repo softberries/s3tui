@@ -13,13 +13,14 @@ impl From<&State> for Props {
     fn from(_state: &State) -> Self {
         Props {
             commands: vec![
+                vec!["Tab/↔".to_string(), "move between local and s3 panel".to_string()],
                 vec!["s".to_string(), "select account currently in use".to_string()],
                 vec!["Esc".to_string(), "move back to the file manager window".to_string()],
                 vec!["↕ / j / k".to_string(), "move up/down on the lists".to_string()],
-                vec!["↔".to_string(), "select/deselect files to transfer".to_string()],
+                vec!["t".to_string(), "select/deselect files to transfer".to_string()],
                 vec!["c".to_string(), "create bucket".to_string()],
                 vec!["⌫ / Del".to_string(), "delete item".to_string()],
-                vec!["t".to_string(), "show currently selected files to transfer".to_string()],
+                vec!["l".to_string(), "show currently selected files to transfer".to_string()],
                 vec!["r".to_string(), "run currently selected transfers".to_string()],
                 vec!["q".to_string(), "quit the application".to_string()],
                 vec!["?".to_string(), "this help page".to_string()]

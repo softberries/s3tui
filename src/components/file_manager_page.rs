@@ -242,11 +242,11 @@ impl FileManagerPage {
 
     fn get_help_line(&self) -> Paragraph {
         if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
-            Paragraph::new("| '↔' transfer select ,'s' s3 account, 't' transfers list, 'Esc/Enter' browsing")
+            Paragraph::new("| 't' transfer select, 's' s3 account, 'l' transfers list, 'Esc/Enter' browsing")
                 .style(Style::default().fg(Color::White)).bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
-            Paragraph::new("| Press 't' to see the transfers list,'s' to select s3 account ")
+            Paragraph::new("| Press 'l' to see the transfers list,'s' to select s3 account ")
                 .style(Style::default().fg(Color::White)).bg(Color::Blue)
                 .alignment(Alignment::Right)
         }
@@ -459,9 +459,16 @@ impl FileManagerPage {
                     self.props.current_local_path.clone(),
                     creds,
                 );
-                let _ = self.action_tx.send(Action::SelectS3Item {
-                    item: selected_item
-                });
+                if !self.props.s3_selected_items.contains(&selected_item) {
+                    let _ = self.action_tx.send(Action::SelectS3Item {
+                        item: selected_item
+                    });
+                } else {
+                    let _ = self.action_tx.send(Action::UnselectS3Item {
+                        item: selected_item
+                    });
+                }
+
             }
         }
     }
@@ -485,51 +492,18 @@ impl FileManagerPage {
                     destination_path,
                     self.props.current_s3_creds.clone(),
                 );
-                let _ = self.action_tx.send(Action::SelectLocalItem {
-                    item: selected_item
-                });
+                if !self.props.local_selected_items.contains(&selected_item) {
+                    let _ = self.action_tx.send(Action::SelectLocalItem {
+                        item: selected_item
+                    });
+                } else {
+                    let _ = self.action_tx.send(Action::UnselectLocalItem {
+                        item: selected_item
+                    });
+                }
             } else {
                 self.show_problem_popup = true;
             }
-        }
-    }
-
-    fn cancel_transfer_from_s3_to_local(&mut self) {
-        if let Some(selected_row) =
-            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
-        {
-            let sr = selected_row.clone();
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                self.props.current_s3_creds.clone(),
-            );
-            let _ = self.action_tx.send(Action::UnselectS3Item {
-                item: selected_item
-            });
-        }
-    }
-
-    fn cancel_transfer_from_local_to_s3(&mut self) {
-        if let Some(selected_row) =
-            self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
-        {
-            let sr = selected_row.clone();
-            let selected_item = LocalSelectedItem::new(
-                sr.name,
-                sr.path,
-                sr.is_directory,
-                self.props.current_s3_bucket.clone().expect("Bucket has to be set for the selected item"),
-                self.props.current_s3_path.clone(),
-                self.props.current_s3_creds.clone(),
-            );
-            let _ = self.action_tx.send(Action::UnselectLocalItem {
-                item: selected_item
-            });
         }
     }
 
@@ -734,24 +708,23 @@ impl Component for FileManagerPage {
                 KeyCode::Delete | KeyCode::Backspace => {
                     self.show_delete_confirmation = true;
                 }
-                KeyCode::Right => {
+                KeyCode::Char('t') => {
                     if self.s3_panel_selected {
                         self.transfer_from_s3_to_local()
-                    } else {
-                        self.cancel_transfer_from_local_to_s3()
-                    }
-                }
-                KeyCode::Left => {
-                    if self.s3_panel_selected {
-                        self.cancel_transfer_from_s3_to_local()
                     } else {
                         self.transfer_from_local_to_s3()
                     }
                 }
+                KeyCode::Left => {
+                    self.s3_panel_selected = true;
+                }
+                KeyCode::Right => {
+                    self.s3_panel_selected = false;
+                }
                 KeyCode::Char('?') => {
                     let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
                 }
-                KeyCode::Char('t') => {
+                KeyCode::Char('l') => {
                     let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Transfers });
                 }
                 KeyCode::Char('s') => {
