@@ -225,6 +225,33 @@ impl FileManagerPage {
         table
     }
 
+    fn get_status_line(&self) -> Paragraph {
+        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
+        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
+            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        if let Some(bucket) = &self.props.current_s3_bucket {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
+            bottom_text
+        } else {
+            let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
+                .style(Style::default().fg(Color::White)).bg(Color::Blue);
+            bottom_text
+        }
+    }
+
+    fn get_help_line(&self) -> Paragraph {
+        if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
+            Paragraph::new("| '↔' transfer select ,'s' s3 account, 't' transfers list, 'Esc/Enter' browsing")
+                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .alignment(Alignment::Right)
+        } else {
+            Paragraph::new("| Press 't' to see the transfers list,'s' to select s3 account ")
+                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .alignment(Alignment::Right)
+        }
+    }
+
     fn get_s3_row(&self, item: &S3DataItem, focus_color: Color) -> Row {
         if Self::contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
             Row::new(item.to_columns().clone()).fg(focus_color).add_modifier(Modifier::REVERSED)
@@ -293,7 +320,9 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        self.props.s3_table_state.select(Some(i));
+        if !self.props.s3_data.is_empty(){
+            self.props.s3_table_state.select(Some(i));
+        }
     }
 
     pub fn move_down_s3_table_selection(&mut self) {
@@ -307,7 +336,9 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        self.props.s3_table_state.select(Some(i));
+        if !self.props.s3_data.is_empty(){
+            self.props.s3_table_state.select(Some(i));
+        }
     }
 
     pub fn move_up_local_table_selection(&mut self) {
@@ -321,7 +352,9 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        self.props.local_table_state.select(Some(i));
+        if !self.props.local_data.is_empty(){
+            self.props.local_table_state.select(Some(i));
+        }
     }
 
     pub fn move_down_local_table_selection(&mut self) {
@@ -335,7 +368,9 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        self.props.local_table_state.select(Some(i));
+        if !self.props.local_data.is_empty(){
+            self.props.local_table_state.select(Some(i));
+        }
     }
 
     pub fn handle_selected_local_row(&mut self) {
@@ -618,11 +653,11 @@ impl Component for FileManagerPage {
                         name: self.input.value().to_string()
                     });
                     self.show_bucket_input = false;
-                },
+                }
                 KeyCode::Esc => {
                     self.show_bucket_input = false;
                     self.send_clear_delete_errors_message();
-                },
+                }
                 _ => {
                     let _ = self.input.handle_event(&crossterm::event::Event::Key(key));
                 }
@@ -791,19 +826,15 @@ impl ComponentRender<()> for FileManagerPage {
         }
         let local_table = self.get_local_table(focus_color);
         frame.render_stateful_widget(&local_table, horizontal_chunks[1], &mut self.props.clone().local_table_state);
-        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
-        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
-            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
 
-        if let Some(bucket) = &self.props.current_s3_bucket {
-            let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
-                .style(Style::default().fg(Color::White)).bg(Color::Blue);
-            frame.render_widget(bottom_text, vertical_chunks[1]);
-        } else {
-            let bottom_text = Paragraph::new(format!(" Account: {} • Transfers: {}/{}", self.props.current_s3_creds.name, to_transfer, transferred))
-                .style(Style::default().fg(Color::White)).bg(Color::Blue);
-            frame.render_widget(bottom_text, vertical_chunks[1]);
-        }
+        let status_line = self.get_status_line();
+        let help_line = self.get_help_line();
+        let status_line_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(vertical_chunks[1]);
+        frame.render_widget(status_line, status_line_layout[0]);
+        frame.render_widget(help_line, status_line_layout[1]);
 
         if self.show_problem_popup {
             let area = Self::centered_rect(60, 20, frame.size());

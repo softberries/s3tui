@@ -65,7 +65,6 @@ impl Component for S3CredsPage {
         if key.kind != KeyEventKind::Press {
             return;
         }
-
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 self.move_down_creds_table_selection()
@@ -100,6 +99,7 @@ impl S3CredsPage {
     }
 
     fn get_s3_table(&self) -> Table {
+        let focus_color = Color::Rgb(98, 114, 164);
         let header =
             Row::new(vec!["Account Name"]).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.creds_data.iter().map(|item| S3CredsPage::get_s3_row(self, item));
@@ -107,7 +107,7 @@ impl S3CredsPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Account list"))
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
             .widths([Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
@@ -123,7 +123,9 @@ impl S3CredsPage {
             }
             None => 0,
         };
-        self.props.creds_table_state.select(Some(i));
+        if !self.props.creds_data.is_empty() {
+            self.props.creds_table_state.select(Some(i));
+        }
     }
 
     pub fn move_down_creds_table_selection(&mut self) {
@@ -137,7 +139,9 @@ impl S3CredsPage {
             }
             None => 0,
         };
-        self.props.creds_table_state.select(Some(i));
+        if !self.props.creds_data.is_empty() {
+            self.props.creds_table_state.select(Some(i));
+        }
     }
 
     pub fn set_current_s3_account(&mut self) {
@@ -153,6 +157,7 @@ impl S3CredsPage {
 }
 
 impl ComponentRender<()> for S3CredsPage {
+
     fn render(&self, frame: &mut Frame, _props: ()) {
         let s3_table = self.get_s3_table();
         frame.render_stateful_widget(&s3_table, frame.size(), &mut self.props.clone().creds_table_state)
