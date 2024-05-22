@@ -39,8 +39,8 @@ impl S3SelectedItem {
             path: Some(item.path),
             is_directory: item.is_directory,
             is_bucket: item.is_bucket,
-            destination_dir: String::new(), // Or provide a default value or additional context if needed
-            transferred: false, // Default value since it's not part of S3DataItem
+            destination_dir: String::new(),
+            transferred: false,
             s3_creds: creds,
             progress: 0f64,
             error: None,
