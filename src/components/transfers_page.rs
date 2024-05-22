@@ -119,7 +119,9 @@ impl TransfersPage {
             }
             None => 0,
         };
-        self.props.table_state.select(Some(i));
+        if !self.props.selected_items.is_empty() {
+            self.props.table_state.select(Some(i));
+        }
     }
 
     pub fn move_down_table_selection(&mut self) {
@@ -133,7 +135,9 @@ impl TransfersPage {
             }
             None => 0,
         };
-        self.props.table_state.select(Some(i));
+        if !self.props.selected_items.is_empty() {
+            self.props.table_state.select(Some(i));
+        }
     }
 
     pub fn unselect_transfer_item(&mut self) {
@@ -182,6 +186,25 @@ impl TransfersPage {
             Row::new(item.to_columns().clone())
         }
     }
+    fn get_status_line(&self) -> Paragraph {
+        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
+        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
+            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        Paragraph::new(format!(" Transfers: {}/{}", to_transfer, transferred))
+            .style(Style::default().fg(Color::White)).bg(Color::Blue)
+    }
+
+    fn get_help_line(&self) -> Paragraph {
+        if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
+            Paragraph::new("| 'Esc' - file manager, 's' to select s3 account, ⌫ to remove ")
+                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .alignment(Alignment::Right)
+        } else {
+            Paragraph::new("| Press 'r' to run the transfers ")
+                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .alignment(Alignment::Right)
+        }
+    }
 
     fn get_transfers_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
@@ -200,8 +223,24 @@ impl TransfersPage {
 
 impl ComponentRender<()> for TransfersPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),   // Take all space left after accounting for the bottom line
+                Constraint::Length(1) // Exactly one line for the bottom
+            ])
+            .split(frame.size());
         let table = self.get_transfers_table();
-        frame.render_stateful_widget(&table, frame.size(), &mut self.props.clone().table_state)
+        frame.render_stateful_widget(&table, vertical_chunks[0], &mut self.props.clone().table_state);
+        let status_line = self.get_status_line();
+        let help_line = self.get_help_line();
+        let status_line_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(vertical_chunks[1]);
+        frame.render_widget(status_line, status_line_layout[0]);
+        frame.render_widget(help_line, status_line_layout[1]);
+
     }
 }
 
