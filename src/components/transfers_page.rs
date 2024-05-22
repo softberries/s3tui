@@ -3,6 +3,8 @@ use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
+use crate::model::local_selected_item::LocalSelectedItem;
+use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::model::transfer_item::TransferItem;
 
@@ -10,6 +12,8 @@ use crate::model::transfer_item::TransferItem;
 struct Props {
     table_state: TableState,
     selected_items: Vec<TransferItem>,
+    s3_selected_items: Vec<S3SelectedItem>,
+    local_selected_items: Vec<LocalSelectedItem>,
 }
 
 impl From<&State> for Props {
@@ -20,6 +24,8 @@ impl From<&State> for Props {
 
         Props {
             table_state: TableState::default(),
+            s3_selected_items: st.s3_selected_items,
+            local_selected_items: st.local_selected_items,
             selected_items: {
                 let mut all_vec = s3_items.clone();
                 all_vec.extend(local_items);
@@ -72,6 +78,15 @@ impl Component for TransfersPage {
         }
 
         match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.move_down_table_selection();
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.move_up_table_selection();
+            }
+            KeyCode::Delete | KeyCode::Backspace => {
+                self.unselect_transfer_item();
+            }
             KeyCode::Char('r') => {
                 let _ = self.action_tx.send(Action::RunTransfers);
             }
@@ -93,6 +108,71 @@ impl Component for TransfersPage {
 }
 
 impl TransfersPage {
+    pub fn move_up_table_selection(&mut self) {
+        let i = match self.props.table_state.selected() {
+            Some(i) => {
+                if i == 0_usize {
+                    self.props.selected_items.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.props.table_state.select(Some(i));
+    }
+
+    pub fn move_down_table_selection(&mut self) {
+        let i = match self.props.table_state.selected() {
+            Some(i) => {
+                if i >= self.props.selected_items.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.props.table_state.select(Some(i));
+    }
+
+    pub fn unselect_transfer_item(&mut self) {
+        if let Some(selected_row) =
+            self.props.table_state.selected().and_then(|index| self.props.selected_items.get(index))
+        {
+            let sr = selected_row.clone();
+            if let Some(s3_item) = self.find_s3_item_from_transfer_item(&sr) {
+                let _ = self.action_tx.send(Action::UnselectS3Item {
+                    item: s3_item
+                });
+            }
+            if let Some(local_item) = self.find_local_item_from_transfer_item(&sr) {
+                let _ = self.action_tx.send(Action::UnselectLocalItem {
+                    item: local_item
+                });
+            }
+        }
+    }
+
+    fn find_s3_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<S3SelectedItem> {
+        self.props.s3_selected_items.iter().find(|&item| {
+            item.bucket.as_deref() == Some(&transfer_item.bucket)
+                && item.name == transfer_item.name
+                && item.path == transfer_item.path
+                && item.destination_dir == transfer_item.destination_dir
+                && item.s3_creds == transfer_item.s3_creds
+        }).cloned()
+    }
+    fn find_local_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<LocalSelectedItem> {
+        self.props.local_selected_items.iter().find(|&item| {
+            item.destination_bucket == transfer_item.bucket
+                && item.name == transfer_item.name
+                && item.path.as_str() == transfer_item.path.as_deref().unwrap_or("")
+                && item.destination_path == transfer_item.destination_dir
+                && item.s3_creds == transfer_item.s3_creds
+        }).cloned()
+    }
+
     fn get_row(&self, item: &TransferItem) -> Row {
         if item.error.is_some() {
             Row::new(item.to_columns().clone()).fg(Color::Red)
