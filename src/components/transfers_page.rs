@@ -3,26 +3,28 @@ use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
-use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
+use crate::model::transfer_item::TransferItem;
 
 #[derive(Clone)]
 struct Props {
-    s3_table_state: TableState,
-    local_table_state: TableState,
-    s3_selected_items: Vec<S3SelectedItem>,
-    local_selected_items: Vec<LocalSelectedItem>,
+    table_state: TableState,
+    selected_items: Vec<TransferItem>,
 }
 
 impl From<&State> for Props {
     fn from(state: &State) -> Self {
         let st = state.clone();
+        let s3_items: Vec<TransferItem> = st.s3_selected_items.iter().map(|i| TransferItem::from_s3_selected_item(i.clone())).collect();
+        let local_items: Vec<TransferItem> = st.local_selected_items.iter().map(|i| TransferItem::from_local_selected_item(i.clone())).collect();
+
         Props {
-            s3_table_state: TableState::default(),
-            local_table_state: TableState::default(),
-            s3_selected_items: st.s3_selected_items,
-            local_selected_items: st.local_selected_items,
+            table_state: TableState::default(),
+            selected_items: {
+                let mut all_vec = s3_items.clone();
+                all_vec.extend(local_items);
+                all_vec
+            },
         }
     }
 }
@@ -53,8 +55,7 @@ impl Component for TransfersPage {
         let new_props = Props::from(state);
         TransfersPage {
             props: Props {
-                s3_table_state: self.props.s3_table_state,
-                local_table_state: self.props.local_table_state,
+                table_state: self.props.table_state,
                 ..new_props
             },
             ..self
@@ -92,16 +93,7 @@ impl Component for TransfersPage {
 }
 
 impl TransfersPage {
-    fn get_s3_row(&self, item: &S3SelectedItem) -> Row {
-        if item.error.is_some() {
-            Row::new(item.to_columns().clone()).fg(Color::Red)
-        } else if item.transferred {
-            Row::new(item.to_columns().clone()).fg(Color::Blue)
-        } else {
-            Row::new(item.to_columns().clone())
-        }
-    }
-    fn get_local_row(&self, item: &LocalSelectedItem) -> Row {
+    fn get_row(&self, item: &TransferItem) -> Row {
         if item.error.is_some() {
             Row::new(item.to_columns().clone()).fg(Color::Red)
         } else if item.transferred {
@@ -111,80 +103,25 @@ impl TransfersPage {
         }
     }
 
-    fn get_s3_table(&self) -> Table {
+    fn get_transfers_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Bucket Name", "Resource Path", "Destination", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.s3_selected_items.iter().map(|item| TransfersPage::get_s3_row(self, item));
-        let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
+            Row::new(vec!["Up/Down", "Bucket", "Path", "Destination", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+        let rows = self.props.selected_items.iter().map(|item| TransfersPage::get_row(self, item));
+        let widths = [Constraint::Length(5), Constraint::Length(15), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Transfers List (S3 -> Local)"))
             .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
-            .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
-        table
-    }
-
-    fn get_local_table(&self) -> Table {
-        let focus_color = Color::Rgb(98, 114, 164);
-        let header =
-            Row::new(vec!["File Name", "Path", "Destination Bucket", "Destination Path", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.local_selected_items.iter().filter(|item| !item.is_directory).map(|item| TransfersPage::get_local_row(self, item));
-        let widths = [Constraint::Length(20), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
-        let table = Table::new(rows, widths)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List (Local -> S3)"))
-            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
-            .widths([Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .widths([Constraint::Percentage(5), Constraint::Percentage(15), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
         table
     }
 }
 
 impl ComponentRender<()> for TransfersPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
-        let s3_table = self.get_s3_table();
-        let local_table = self.get_local_table();
-        let size = frame.size();
-        match (self.props.local_selected_items.is_empty(), self.props.s3_selected_items.is_empty()) {
-            (false, false) => {
-                let chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(size);
-                frame.render_stateful_widget(&s3_table, chunks[0], &mut self.props.clone().s3_table_state);
-                frame.render_stateful_widget(&local_table, chunks[1], &mut self.props.clone().local_table_state);
-            }
-            (false, true) => frame.render_stateful_widget(&local_table, frame.size(), &mut self.props.clone().local_table_state),
-            (true, false) => frame.render_stateful_widget(&s3_table, frame.size(), &mut self.props.clone().s3_table_state),
-            (true, true) => {
-                // Define horizontal constraints: previous, center (50% of available space), next
-                let chunks_horizontal = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([
-                        Constraint::Percentage(25), // Adjust this percentage to better center the text
-                        Constraint::Percentage(50),
-                        Constraint::Percentage(25),
-                    ])
-                    .split(size);
-
-                // Define vertical constraints: top, middle (50% of available height), bottom
-                let chunks_vertical = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Percentage(25), // Adjust this percentage to better center the text
-                        Constraint::Percentage(50),
-                        Constraint::Percentage(25),
-                    ])
-                    .split(chunks_horizontal[1]); // Apply vertical layout to the center horizontal chunk
-
-                let text = Text::from("No transfers created. Use arrows (↔) to select/deselect items for transfer");
-                let info = Paragraph::new(text)
-                    .alignment(Alignment::Center) // Center text horizontally
-                    .block(Block::default().borders(Borders::NONE)); // Optional: Add borders to see the widget's extents
-
-                frame.render_widget(&info, chunks_vertical[1]);
-            }
-        }
+        let table = self.get_transfers_table();
+        frame.render_stateful_widget(&table, frame.size(), &mut self.props.clone().table_state)
     }
 }
 
@@ -193,6 +130,8 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     use tokio::sync::mpsc;
+    use crate::model::local_selected_item::LocalSelectedItem;
+    use crate::model::s3_selected_item::S3SelectedItem;
 
     #[tokio::test]
     async fn test_key_event_handling() {
@@ -205,7 +144,7 @@ mod tests {
             code: KeyCode::Char('r'),
             kind: KeyEventKind::Press,
             modifiers: KeyModifiers::NONE,
-            state: KeyEventState::NONE
+            state: KeyEventState::NONE,
         });
         assert_eq!(rx.recv().await.unwrap(), Action::RunTransfers, "Should send RunTransfers action");
 
@@ -214,7 +153,7 @@ mod tests {
             code: KeyCode::Char('q'),
             kind: KeyEventKind::Press,
             modifiers: KeyModifiers::NONE,
-            state: KeyEventState::NONE
+            state: KeyEventState::NONE,
         });
         assert_eq!(rx.recv().await.unwrap(), Action::Exit, "Should send Exit action");
 
@@ -253,10 +192,8 @@ mod tests {
         let page = TransfersPage::new(&state, tx);
 
         // Assuming Props::from(&state) initializes TableStates as default and copies selected items lists
-        assert!(page.props.s3_table_state.selected().is_none(), "S3 table state should be initialized to default");
-        assert!(page.props.local_table_state.selected().is_none(), "Local table state should be initialized to default");
-        assert_eq!(page.props.s3_selected_items, state.s3_selected_items, "S3 selected items should match state");
-        assert_eq!(page.props.local_selected_items, state.local_selected_items, "Local selected items should match state");
+        assert!(page.props.table_state.selected().is_none(), "table state should be initialized to default");
+        assert_eq!(page.props.selected_items.len(), state.s3_selected_items.len(), "selected items should match state");
     }
 
     #[test]
@@ -274,11 +211,13 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
-            error: None
+            error: None,
         };
-        let res = page.get_s3_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()));
+        let transfer_item = TransferItem::from_s3_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()));
     }
+
     #[test]
     fn get_s3_row_with_error_constructs_red_row() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -294,10 +233,11 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
-            error: Some("Error".into())
+            error: Some("Error".into()),
         };
-        let res = page.get_s3_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Red));
+        let transfer_item = TransferItem::from_s3_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Red));
     }
 
     #[test]
@@ -315,10 +255,11 @@ mod tests {
             transferred: true,
             s3_creds: Default::default(),
             progress: 0f64,
-            error: None
+            error: None,
         };
-        let res = page.get_s3_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Blue));
+        let transfer_item = TransferItem::from_s3_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Blue));
     }
 
     #[test]
@@ -335,11 +276,13 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
-        let res = page.get_local_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()));
+        let transfer_item = TransferItem::from_local_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()));
     }
+
     #[test]
     fn get_local_row_with_transferred_constructs_blue_row() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -354,10 +297,11 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: None
+            error: None,
         };
-        let res = page.get_local_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Blue));
+        let transfer_item = TransferItem::from_local_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Blue));
     }
 
     #[test]
@@ -374,9 +318,10 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
-            error: Some("Error".into())
+            error: Some("Error".into()),
         };
-        let res = page.get_local_row(&item);
-        assert_eq!(res, Row::new(item.to_columns().clone()).fg(Color::Red));
+        let transfer_item = TransferItem::from_local_selected_item(item);
+        let res = page.get_row(&transfer_item);
+        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Red));
     }
 }

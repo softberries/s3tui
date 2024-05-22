@@ -32,15 +32,6 @@ impl S3SelectedItem {
         }
     }
 
-    pub fn to_columns(&self) -> Vec<String> {
-        let progress = format!("{:.2}%", self.progress);
-        if self.is_bucket {
-            vec![self.name.clone(), "/".to_string(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
-        } else {
-            vec![self.bucket.clone().unwrap_or("".to_string()), self.name.clone(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
-        }
-    }
-
     pub fn from_s3_data_item(item: S3DataItem, creds: FileCredential) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
@@ -96,97 +87,5 @@ mod tests {
             Default::default()
         );
         assert_eq!(item, res);
-    }
-
-    #[test]
-    fn to_columns_get_correct_vector() {
-        let item = S3SelectedItem::new(
-            "file1.txt".into(),
-            Some("test-bucket".into()),
-            Some("path/to/file1.txt".into()),
-            false,
-            false,
-            "".into(),
-            Default::default()
-        );
-        let res = item.to_columns();
-        assert_eq!(res.len(), 6);
-        assert_eq!(res[0], item.bucket.unwrap());
-        assert_eq!(res[1], item.name);
-        assert_eq!(res[2], item.destination_dir);
-        assert_eq!(res[3], item.s3_creds.name);
-        assert_eq!(res[4], "0.00%".to_string());
-        assert_eq!(res[5], "".to_string());
-    }
-
-    #[test]
-    fn to_columns_with_error_get_correct_vector() {
-        let item = S3SelectedItem {
-            bucket: Some("test-bucket".into()),
-            name: "file1.txt".into(),
-            path: Some("path/to/file1.txt".into()),
-            is_directory: false,
-            is_bucket: false,
-            destination_dir: "".to_string(),
-            transferred: false,
-            s3_creds: Default::default(),
-            progress: 0f64,
-            error: Some("Error".into())
-        };
-        let res = item.to_columns();
-        assert_eq!(res.len(), 6);
-        assert_eq!(res[0], item.bucket.unwrap());
-        assert_eq!(res[1], item.name);
-        assert_eq!(res[2], item.destination_dir);
-        assert_eq!(res[3], item.s3_creds.name);
-        assert_eq!(res[4], "0.00%".to_string());
-        assert_eq!(res[5], "Error".to_string());
-    }
-
-    #[test]
-    fn to_columns_for_bucket_get_correct_vector() {
-        let item = S3SelectedItem::new(
-            "file1.txt".into(),
-            Some("test-bucket".into()),
-            Some("path/to/file1.txt".into()),
-            false,
-            true,
-            "".into(),
-            Default::default()
-        );
-        let res = item.to_columns();
-
-        assert_eq!(res.len(), 6);
-        assert_eq!(res[0], item.name);
-        assert_eq!(res[1], "/");
-        assert_eq!(res[2], item.destination_dir);
-        assert_eq!(res[3], item.s3_creds.name);
-        assert_eq!(res[4], "0.00%".to_string());
-        assert_eq!(res[5], "".to_string());
-    }
-
-    #[test]
-    fn to_columns_for_bucket_with_error_get_correct_vector() {
-        let item = S3SelectedItem {
-            bucket: Some("test-bucket".into()),
-            name: "file1.txt".into(),
-            path: Some("path/to/file1.txt".into()),
-            is_directory: false,
-            is_bucket: true,
-            destination_dir: "".to_string(),
-            transferred: false,
-            s3_creds: Default::default(),
-            progress: 0f64,
-            error: Some("Error".into())
-        };
-        let res = item.to_columns();
-
-        assert_eq!(res.len(), 6);
-        assert_eq!(res[0], item.name);
-        assert_eq!(res[1], "/");
-        assert_eq!(res[2], item.destination_dir);
-        assert_eq!(res[3], item.s3_creds.name);
-        assert_eq!(res[4], "0.00%".to_string());
-        assert_eq!(res[5], "Error".to_string());
     }
 }
