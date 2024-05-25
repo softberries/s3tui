@@ -157,14 +157,16 @@ impl TransfersPage {
             }
         }
     }
-
     fn find_s3_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<S3SelectedItem> {
         self.props.s3_selected_items.iter().find(|&item| {
-            item.bucket.as_deref() == Some(&transfer_item.bucket)
-                && item.name == transfer_item.name
-                && item.path == transfer_item.path
-                && item.destination_dir == transfer_item.destination_dir
-                && item.s3_creds == transfer_item.s3_creds
+            if item.is_bucket {
+                item.name == transfer_item.name
+                    && item.destination_dir == transfer_item.destination_dir
+            } else {
+                item.name == transfer_item.name
+                    && item.path == transfer_item.path
+                    && item.destination_dir == transfer_item.destination_dir
+            }
         }).cloned()
     }
     fn find_local_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<LocalSelectedItem> {
@@ -186,10 +188,28 @@ impl TransfersPage {
             Row::new(item.to_columns().clone())
         }
     }
+
+    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
+        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<S3SelectedItem> = s3_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
+
+    fn flatten_local_items(&self, local_selected_items: Vec<LocalSelectedItem>) -> Vec<LocalSelectedItem> {
+        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<LocalSelectedItem> = local_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
     fn get_status_line(&self) -> Paragraph {
-        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
-        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
-            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        let s3_items = self.flatten_s3_items(self.props.s3_selected_items.clone());
+        let local_items = self.flatten_local_items(self.props.local_selected_items.clone());
+        let to_transfer = s3_items.len() + local_items.len();
+        let transferred = s3_items.iter().filter(|i| i.transferred).count() +
+            local_items.iter().filter(|i| i.transferred).count();
         Paragraph::new(format!(" Transfers: {}/{}", to_transfer, transferred))
             .style(Style::default().fg(Color::White)).bg(Color::Blue)
     }
@@ -209,7 +229,7 @@ impl TransfersPage {
     fn get_transfers_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
         let header =
-            Row::new(vec!["Up/Down", "Bucket", "Path", "Destination", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
+            Row::new(vec!["Up/Down", "Bucket", "Item", "Destination", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
         let rows = self.props.selected_items.iter().map(|item| TransfersPage::get_row(self, item));
         let widths = [Constraint::Length(5), Constraint::Length(15), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
         let table = Table::new(rows, widths)
@@ -240,7 +260,6 @@ impl ComponentRender<()> for TransfersPage {
             .split(vertical_chunks[1]);
         frame.render_widget(status_line, status_line_layout[0]);
         frame.render_widget(help_line, status_line_layout[1]);
-
     }
 }
 
@@ -330,6 +349,7 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
+            children: None,
             error: None,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
@@ -352,6 +372,7 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
+            children: None,
             error: Some("Error".into()),
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
@@ -374,6 +395,7 @@ mod tests {
             transferred: true,
             s3_creds: Default::default(),
             progress: 0f64,
+            children: None,
             error: None,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
@@ -395,6 +417,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
+            children: None,
             error: None,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
@@ -416,6 +439,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
+            children: None,
             error: None,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
@@ -437,6 +461,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
+            children: None,
             error: Some("Error".into()),
         };
         let transfer_item = TransferItem::from_local_selected_item(item);

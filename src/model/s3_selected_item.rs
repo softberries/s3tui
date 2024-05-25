@@ -13,11 +13,12 @@ pub struct S3SelectedItem {
     pub transferred: bool,
     pub s3_creds: FileCredential,
     pub progress: f64,
+    pub children: Option<Vec<S3SelectedItem>>,
     pub error: Option<String>,
 }
 
 impl S3SelectedItem {
-    pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String, s3_creds: FileCredential) -> S3SelectedItem {
+    pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String, s3_creds: FileCredential, children: Option<Vec<S3SelectedItem>>) -> S3SelectedItem {
         S3SelectedItem {
             bucket,
             name,
@@ -28,21 +29,56 @@ impl S3SelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            children,
             error: None,
         }
     }
 
-    pub fn from_s3_data_item(item: S3DataItem, creds: FileCredential) -> S3SelectedItem {
+    /*
+    let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds,
+                None,
+            );
+   let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds,
+                None,
+            )
+    let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds,
+                None,
+            );
+     */
+
+    pub fn from_s3_data_item(item: S3DataItem, creds: FileCredential, destination_dir: String) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
             name: item.name,
             path: Some(item.path),
             is_directory: item.is_directory,
             is_bucket: item.is_bucket,
-            destination_dir: String::new(),
+            destination_dir: destination_dir.clone(),
             transferred: false,
             s3_creds: creds,
             progress: 0f64,
+            children: None,
             error: None,
         }
     }
@@ -75,6 +111,7 @@ mod tests {
             transferred: false,
             s3_creds: Default::default(),
             progress: 0f64,
+            children: None,
             error: None
         };
         let res = S3SelectedItem::new(
@@ -84,7 +121,8 @@ mod tests {
             false,
             false,
             "".into(),
-            Default::default()
+            Default::default(),
+            None
         );
         assert_eq!(item, res);
     }

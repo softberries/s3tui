@@ -8,12 +8,7 @@ use crate::model::s3_data_item::{BucketInfo, FileInfo, S3DataItem};
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
 use aws_smithy_runtime_api::http::Request;
-use std::{
-    convert::Infallible,
-    path::PathBuf,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{convert::Infallible, fs, path::PathBuf, pin::Pin, task::{Context, Poll}};
 
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::{
@@ -177,7 +172,11 @@ impl S3DataFetcher {
             // .buffer_size(2048)
             .build()
             .await?;
-        let key = item.destination_path;//Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
+        let key = if item.destination_path == "/" {
+            item.name
+        } else {
+            item.destination_path
+        };//Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
         //destination_path
         let request = client
             .put_object()
@@ -200,6 +199,15 @@ impl S3DataFetcher {
         }
     }
 
+    fn create_directory_structure(&self, full_path: &Path) -> eyre::Result<()> {
+        // Extract the directory path
+        if let Some(parent_dir) = full_path.parent() {
+            // Create the directory structure
+            fs::create_dir_all(parent_dir)?;
+        }
+
+        Ok(())
+    }
     /*
     this function handles only simple files as of now.
     - no directory or full bucket handling
@@ -208,6 +216,7 @@ impl S3DataFetcher {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
         path.push(item.name.clone());
+        self.create_directory_structure(&path)?;
         let mut file = File::create(&path)?;
         let bucket = item.bucket.expect("bucket must be defined").clone();
         let head_obj = client
@@ -324,7 +333,7 @@ impl S3DataFetcher {
         }
     }
 
-    pub async fn delete_data(&self, is_bucket: bool, bucket: Option<String>, name: String) -> eyre::Result<Option<String>> {
+    pub async fn delete_data(&self, is_bucket: bool, bucket: Option<String>, name: String, _is_directory: bool) -> eyre::Result<Option<String>> {
         if is_bucket {
             let location = self.get_bucket_location(&name).await?;
             let creds = self.credentials.clone();
@@ -349,30 +358,34 @@ impl S3DataFetcher {
             tracing::info!("Deleting object: {:?}, {:?}", name, bucket);
             match bucket {
                 Some(b) => {
-                    let location = self.get_bucket_location(&b).await?;
-                    let creds = self.credentials.clone();
-                    let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone(), selected: false };
-                    let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
-                    let response = client_with_location
-                        .delete_object()
-                        .key(name.clone())
-                        .bucket(b.clone().to_owned())
-                        .send()
-                        .await;
-                    match response {
-                        Ok(_) => {
-                            tracing::info!("S3 Object deleted, bucket: {:?}, name: {:?}", b, name);
-                            Ok(None)
-                        }
-                        Err(e) => {
-                            tracing::error!("Cannot delete object, bucket: {:?}, name: {:?}, error: {:?}", b, name, e);
-                            Ok(Some(format!("Cannot delete object, {:?}", e.into_service_error().message().unwrap_or(""))))
-                        }
-                    }
+                    self.delete_single_item(&b, &name).await
                 }
                 None => {
                     Ok(Some("No bucket specified!".into()))
                 }
+            }
+        }
+    }
+
+    async fn delete_single_item(&self, bucket: &str, name: &str) -> eyre::Result<Option<String>> {
+        let location = self.get_bucket_location(bucket).await?;
+        let creds = self.credentials.clone();
+        let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone(), selected: false };
+        let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
+        let response = client_with_location
+            .delete_object()
+            .key(name)
+            .bucket(bucket)
+            .send()
+            .await;
+        match response {
+            Ok(_) => {
+                tracing::info!("S3 Object deleted, bucket: {:?}, name: {:?}", bucket, name);
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::error!("Cannot delete object, bucket: {:?}, name: {:?}, error: {:?}", bucket, name, e);
+                Ok(Some(format!("Cannot delete object, {:?}", e.into_service_error().message().unwrap_or(""))))
             }
         }
     }
@@ -449,7 +462,7 @@ impl S3DataFetcher {
     /// This method is similar to `list_objects` but it fetches all the data recursively
     /// including data behind the prefixes.
     /// Designed to be used mainly when selecting whole bucket/prefix for download or delete.
-    async fn list_all_objects(&self, bucket: &str, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
+    pub async fn list_all_objects(&self, bucket: &str, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
         let mut all_objects = Vec::new();
         let location = self.get_bucket_location(bucket).await?;
         self.recursive_list_objects(bucket, prefix, &location, &mut all_objects).await?;
@@ -507,21 +520,6 @@ impl S3DataFetcher {
                         }
                         for common_prefix in output.common_prefixes() {
                             let prefix = common_prefix.prefix().unwrap_or_default().to_string();
-                            let file_info = FileInfo {
-                                file_name: prefix.clone(),
-                                size: "".to_string(),
-                                file_type: "Dir".to_string(),
-                                path: prefix.clone(),
-                                is_directory: true,
-                            };
-                            let bucket_info = BucketInfo {
-                                bucket: Some(bucket.to_string()),
-                                region: Some(location.to_string()),
-                                is_bucket: false,
-                            };
-                            all_objects.push(S3DataItem::init(bucket_info, file_info));
-
-                            // Recursively list objects in the current prefix
                             self.recursive_list_objects(bucket, Some(prefix), location, all_objects).await?;
                         }
                     }

@@ -14,11 +14,12 @@ pub struct LocalSelectedItem {
     pub transferred: bool,
     pub s3_creds: FileCredential,
     pub progress: f64,
+    pub children: Option<Vec<LocalSelectedItem>>,
     pub error: Option<String>,
 }
 
 impl LocalSelectedItem {
-    pub fn new(name: String, path: String, is_directory: bool, destination_bucket: String, destination_path: String, s3_creds: FileCredential) -> LocalSelectedItem {
+    pub fn new(name: String, path: String, is_directory: bool, destination_bucket: String, destination_path: String, s3_creds: FileCredential, children: Option<Vec<LocalSelectedItem>>) -> LocalSelectedItem {
         LocalSelectedItem {
             name,
             path,
@@ -28,9 +29,30 @@ impl LocalSelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            children,
             error: None,
         }
     }
+    /*
+    let selected_item = LocalSelectedItem::new(
+                    sr.name.clone(),
+                    sr.path,
+                    sr.is_directory,
+                    selected_bucket,
+                    destination_path,
+                    self.props.current_s3_creds.clone(),
+                    None,
+                );
+    let selected_item = LocalSelectedItem::new(
+                sr.name,
+                sr.path,
+                sr.is_directory,
+                "".to_string(),
+                self.props.current_s3_path.clone(),
+                self.props.current_s3_creds.clone(),
+                None,
+            );
+     */
 
     pub fn from_local_data_item(item: LocalDataItem, s3_creds: FileCredential) -> Self {
         LocalSelectedItem {
@@ -42,6 +64,7 @@ impl LocalSelectedItem {
             transferred: false,
             s3_creds,
             progress: 0f64,
+            children: None,
             error: None,
         }
     }
@@ -67,6 +90,7 @@ impl LocalSelectedItem {
                             transferred: false,
                             s3_creds: item.s3_creds.clone(),
                             progress: 0.0,
+                            children: None,
                             error: None,
                         }));
                     } else {
@@ -82,6 +106,7 @@ impl LocalSelectedItem {
                             transferred: false,
                             s3_creds: item.s3_creds.clone(),
                             progress: 0.0,
+                            children: None,
                             error: None,
                         });
                     }
@@ -103,7 +128,6 @@ impl PartialEq for LocalSelectedItem {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +143,7 @@ mod tests {
             progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
+            children: None,
             error: None,
         };
         let res = LocalSelectedItem::new(
@@ -128,6 +153,7 @@ mod tests {
             "test-bucket".into(),
             "".to_string(),
             Default::default(),
+            None,
         );
         assert_eq!(item, res);
     }
