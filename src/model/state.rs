@@ -233,7 +233,7 @@ impl State {
                     .unwrap_or_else(|e| panic!("Decoding error: {}", e)) // Handle the error case
                     .to_string(); // Convert `Cow<str>` to `String`
                 let name = String::from(&item.name);
-                if item.destination_bucket == bucket_name.to_string() && name == encoded_name {
+                if item.destination_bucket == *bucket_name && name == encoded_name {
                     item.progress = progress_item.progress;
                     mutated_items.push(item.clone());
                 } else {
@@ -248,7 +248,7 @@ impl State {
                             .unwrap_or_else(|e| panic!("Decoding error: {}", e)) // Handle the error case
                             .to_string();
                         let name = String::from(&child.name);
-                        if child.destination_bucket == bucket_name.to_string() && name == encoded_name {
+                        if child.destination_bucket == *bucket_name && name == encoded_name {
                             child.progress = progress_item.progress;
                             mutated_children.push(child.clone());
                         } else {
@@ -299,17 +299,17 @@ impl State {
     fn calculate_overall_progress_s3(items: Vec<S3SelectedItem>) -> f64 {
         let all_progress: f64 = items.clone().into_iter().map(|i| i.progress).collect::<Vec<_>>().into_iter().sum();
         if all_progress > 0.0 {
-            return all_progress / items.len() as f64;
+            all_progress / items.len() as f64
         } else {
-            return 0.0;
+            0.0
         }
     }
     fn calculate_overall_progress_local(items: Vec<LocalSelectedItem>) -> f64 {
         let all_progress: f64 = items.clone().into_iter().map(|i| i.progress).collect::<Vec<_>>().into_iter().sum();
         if all_progress > 0.0 {
-            return all_progress / items.len() as f64;
+            all_progress / items.len() as f64
         } else {
-            return 0.0;
+            0.0
         }
     }
 
