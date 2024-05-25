@@ -673,7 +673,7 @@ impl FileManagerPage {
                 creds,
                 None,
             );
-            if selected_item.is_bucket || selected_item.is_directory {
+            if selected_item.is_directory {
                 self.show_delete_multiple_confirmation = true;
                 self.props.s3_list_recursive_loading = true;
                 let _ = self.action_tx.send(Action::ListS3DataRecursiveForItem {

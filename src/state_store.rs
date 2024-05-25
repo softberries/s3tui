@@ -232,7 +232,7 @@ impl StateStore {
     async fn delete_s3_data(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_delete_tx: UnboundedSender<Option<String>>) {
         let items_with_children = self.flatten_s3_items(vec![item]);
         for item in items_with_children {
-            if !item.is_bucket && !item.is_directory {
+            if !item.is_directory {
                 let delete_tx = s3_delete_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
                 tokio::spawn(async move {
