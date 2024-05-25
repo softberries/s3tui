@@ -75,6 +75,7 @@ pub struct FileManagerPage {
     show_problem_popup: bool,
     show_bucket_input: bool,
     show_delete_confirmation: bool,
+    show_delete_multiple_confirmation: bool,
     show_download_confirmation: bool,
     show_delete_error: bool,
     default_navigation_state: NavigationState,
@@ -589,6 +590,34 @@ impl FileManagerPage {
         }
     }
 
+    fn finish_recursive_delete_from_s3_to_local(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let destination_dir = self.props.current_local_path.clone();
+            let children = self.props.s3_data_full_list.iter().map(|i| S3SelectedItem::from_s3_data_item(i.clone(), creds.clone(), destination_dir.clone())).collect();
+            let selected_item = S3SelectedItem::new(
+                sr.name,
+                sr.bucket,
+                Some(sr.path),
+                sr.is_directory,
+                sr.is_bucket,
+                self.props.current_local_path.clone(),
+                creds.clone(),
+                Some(children),
+            );
+            let _ = self.action_tx.send(Action::DeleteS3Item {
+                item: selected_item
+            });
+        }
+    }
+
     fn transfer_from_local_to_s3(&mut self) {
         if let Some(selected_row) =
             self.props.local_table_state.selected().and_then(|index| self.props.local_data.get(index))
@@ -644,9 +673,17 @@ impl FileManagerPage {
                 creds,
                 None,
             );
-            let _ = self.action_tx.send(Action::DeleteS3Item {
-                item: selected_item
-            });
+            if selected_item.is_bucket || selected_item.is_directory {
+                self.show_delete_multiple_confirmation = true;
+                self.props.s3_list_recursive_loading = true;
+                let _ = self.action_tx.send(Action::ListS3DataRecursiveForItem {
+                    item: selected_item
+                });
+            } else {
+                let _ = self.action_tx.send(Action::DeleteS3Item {
+                    item: selected_item
+                });
+            }
         }
     }
 
@@ -703,6 +740,7 @@ impl Component for FileManagerPage {
             show_problem_popup: false,
             show_bucket_input: false,
             show_delete_confirmation: false,
+            show_delete_multiple_confirmation: false,
             show_download_confirmation: false,
             show_delete_error: false,
             s3_panel_selected: true,
@@ -792,6 +830,17 @@ impl Component for FileManagerPage {
                 }
                 KeyCode::Esc => {
                     self.show_download_confirmation = false;
+                }
+                _ => {}
+            }
+        } else if self.show_delete_multiple_confirmation && !self.props.s3_list_recursive_loading {
+            match key.code {
+                KeyCode::Enter => {
+                    self.finish_recursive_delete_from_s3_to_local();
+                    self.show_delete_multiple_confirmation = false;
+                }
+                KeyCode::Esc => {
+                    self.show_delete_multiple_confirmation = false;
                 }
                 _ => {}
             }
@@ -969,6 +1018,15 @@ impl ComponentRender<()> for FileManagerPage {
             let area = Self::centered_rect(60, 20, frame.size());
             frame.render_widget(Clear, area); //this clears out the background
             let block = self.make_delete_alert("Are you sure you want to delete this object?".to_string(), Color::Green);
+            frame.render_widget(block, area);
+        } else if self.show_delete_multiple_confirmation {
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area);
+            let block = if self.props.s3_list_recursive_loading {
+                self.make_confirm_download_alert("Loading selected object information recursively...".to_string(), Color::Green, false)
+            } else {
+                self.make_confirm_download_alert(format!("You have selected {} items to delete. Proceed?", self.props.s3_data_full_list.len()).to_string(), Color::Green, true)
+            };
             frame.render_widget(block, area);
         } else if self.show_download_confirmation {
             let area = Self::centered_rect(60, 20, frame.size());

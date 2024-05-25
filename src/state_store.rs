@@ -230,17 +230,24 @@ impl StateStore {
     }
 
     async fn delete_s3_data(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_delete_tx: UnboundedSender<Option<String>>) {
-        tokio::spawn(async move {
-            match s3_data_fetcher.delete_data(item.is_bucket, item.bucket.clone(), item.name.clone(), item.is_directory).await {
-                Ok(data) => {
-                    let _ = s3_delete_tx.send(data);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to delete S3 data: {}", e);
-                    let _ = s3_delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
-                }
+        let items_with_children = self.flatten_s3_items(vec![item]);
+        for item in items_with_children {
+            if !item.is_bucket && !item.is_directory {
+                let delete_tx = s3_delete_tx.clone();
+                let fetcher = s3_data_fetcher.clone();
+                tokio::spawn(async move {
+                    match fetcher.delete_data(item.is_bucket, item.bucket.clone(), item.name.clone(), item.is_directory).await {
+                        Ok(data) => {
+                            let _ = delete_tx.send(data);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to delete S3 data: {}", e);
+                            let _ = delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
+                        }
+                    }
+                });
             }
-        });
+        }
     }
 
     async fn create_bucket(&self, name: String, s3_data_fetcher: S3DataFetcher, create_bucket_tx: UnboundedSender<Option<String>>) {
