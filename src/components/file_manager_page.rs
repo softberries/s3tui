@@ -390,10 +390,12 @@ impl FileManagerPage {
     pub fn move_up_s3_table_selection(&mut self) {
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.s3_data.is_empty() {
                     self.props.s3_data.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
@@ -406,7 +408,7 @@ impl FileManagerPage {
     pub fn move_down_s3_table_selection(&mut self) {
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i >= self.props.s3_data.len() - 1 {
+                if !self.props.s3_data.is_empty() && i >= self.props.s3_data.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -422,10 +424,12 @@ impl FileManagerPage {
     pub fn move_up_local_table_selection(&mut self) {
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.local_data.is_empty() {
                     self.props.local_data.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
@@ -438,7 +442,7 @@ impl FileManagerPage {
     pub fn move_down_local_table_selection(&mut self) {
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i >= self.props.local_data.len() - 1 {
+                if !self.props.local_data.is_empty() && i >= self.props.local_data.len() - 1 {
                     0
                 } else {
                     i + 1

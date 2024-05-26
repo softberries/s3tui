@@ -115,10 +115,12 @@ impl S3CredsPage {
     pub fn move_up_creds_table_selection(&mut self) {
         let i = match self.props.creds_table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.creds_data.is_empty() {
                     self.props.creds_data.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
@@ -131,7 +133,7 @@ impl S3CredsPage {
     pub fn move_down_creds_table_selection(&mut self) {
         let i = match self.props.creds_table_state.selected() {
             Some(i) => {
-                if i >= self.props.creds_data.len() - 1 {
+                if !self.props.creds_data.is_empty() && i >= self.props.creds_data.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -157,7 +159,6 @@ impl S3CredsPage {
 }
 
 impl ComponentRender<()> for S3CredsPage {
-
     fn render(&self, frame: &mut Frame, _props: ()) {
         let s3_table = self.get_s3_table();
         frame.render_stateful_widget(&s3_table, frame.size(), &mut self.props.clone().creds_table_state)

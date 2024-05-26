@@ -111,15 +111,17 @@ impl TransfersPage {
     pub fn move_up_table_selection(&mut self) {
         let i = match self.props.table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.selected_items.is_empty() {
                     self.props.selected_items.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
         };
-        if !self.props.selected_items.is_empty() {
+        if !self.props.selected_items.len() > i {
             self.props.table_state.select(Some(i));
         }
     }
@@ -127,7 +129,7 @@ impl TransfersPage {
     pub fn move_down_table_selection(&mut self) {
         let i = match self.props.table_state.selected() {
             Some(i) => {
-                if i >= self.props.selected_items.len() - 1 {
+                if !self.props.selected_items.is_empty() && i >= self.props.selected_items.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -135,7 +137,7 @@ impl TransfersPage {
             }
             None => 0,
         };
-        if !self.props.selected_items.is_empty() {
+        if !self.props.selected_items.len() > i {
             self.props.table_state.select(Some(i));
         }
     }
@@ -147,12 +149,12 @@ impl TransfersPage {
             let sr = selected_row.clone();
             if let Some(s3_item) = self.find_s3_item_from_transfer_item(&sr) {
                 let _ = self.action_tx.send(Action::UnselectS3Item {
-                    item: s3_item
+                    item: s3_item.clone()
                 });
             }
             if let Some(local_item) = self.find_local_item_from_transfer_item(&sr) {
                 let _ = self.action_tx.send(Action::UnselectLocalItem {
-                    item: local_item
+                    item: local_item.clone()
                 });
             }
         }
