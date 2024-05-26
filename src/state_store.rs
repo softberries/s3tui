@@ -31,38 +31,57 @@ impl StateStore {
 }
 
 impl StateStore {
+    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
+        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<S3SelectedItem> = s3_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
+
+    fn flatten_local_items(&self, local_selected_items: Vec<LocalSelectedItem>) -> Vec<LocalSelectedItem> {
+        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<LocalSelectedItem> = local_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
     async fn download_data(&self, s3_data_fetcher: &S3DataFetcher, s3_selected_items: Vec<S3SelectedItem>, selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>, download_tx: UnboundedSender<DownloadProgressItem>) {
-        for item in s3_selected_items {
-            let tx = selected_s3_transfers_tx.clone();
-            let down_tx = download_tx.clone();
-            let fetcher = s3_data_fetcher.clone();
-            tokio::spawn(async move {
-                match fetcher.download_item(item.clone(), down_tx).await {
-                    Ok(_) => {
-                        if tx.send(item.clone()).is_err() {
-                            tracing::error!("Failed to send downloaded item");
+        let items_with_children = self.flatten_s3_items(s3_selected_items);
+        for item in items_with_children {
+            if !item.is_bucket && !item.is_directory {
+                let tx = selected_s3_transfers_tx.clone();
+                let down_tx = download_tx.clone();
+                let fetcher = s3_data_fetcher.clone();
+                tokio::spawn(async move {
+                    match fetcher.download_item(item.clone(), down_tx).await {
+                        Ok(_) => {
+                            if tx.send(item.clone()).is_err() {
+                                tracing::error!("Failed to send downloaded item");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to download data: {}", e);
+                            let orig_item = item.clone();
+                            let errored_item = S3SelectedItem {
+                                error: Some(e.to_string()),
+                                transferred: false,
+                                progress: 0f64,
+                                ..orig_item
+                            };
+                            if tx.send(errored_item).is_err() {
+                                tracing::error!("Failed to send item in error");
+                            }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to download data: {}", e);
-                        let orig_item = item.clone();
-                        let errored_item = S3SelectedItem {
-                            error: Some(e.to_string()),
-                            transferred: false,
-                            progress: 0f64,
-                            ..orig_item
-                        };
-                        if tx.send(errored_item).is_err() {
-                            tracing::error!("Failed to send item in error");
-                        }
-                    }
-                }
-            });
+                });
+            }
         }
     }
 
     async fn upload_data(&self, s3_data_fetcher: &S3DataFetcher, local_selected_items: Vec<LocalSelectedItem>, selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>, upload_tx: UnboundedSender<UploadProgressItem>) {
-        for item in local_selected_items {
+        let items_with_children = self.flatten_local_items(local_selected_items);
+        for item in items_with_children {
             if !item.is_directory {
                 let local_tx = selected_local_transfers_tx.clone();
                 let up_tx = upload_tx.clone();
@@ -98,6 +117,31 @@ impl StateStore {
             match s3_data_fetcher.list_current_location(bucket.clone(), prefix.clone()).await {
                 Ok(data) => {
                     let _ = s3_tx.send((bucket.clone(), prefix.clone(), data));
+                }
+                Err(e) => {
+                    tracing::error!("Failed to fetch S3 data: {}", e);
+                }
+            }
+        });
+    }
+
+    async fn list_s3_data_recursive(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_full_list_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
+        tracing::info!("list_s3_Data_recursive");
+        tokio::spawn(async move {
+            let bucket_name = if item.is_bucket {
+                item.name
+            } else {
+                item.bucket.unwrap_or(item.name)
+            };
+            let path = if item.is_bucket {
+                None
+            } else {
+                item.path.clone()
+            };
+            match s3_data_fetcher.list_all_objects(&bucket_name, path.clone()).await {
+                Ok(data) => {
+                    tracing::info!("Downloaded items: {}", data.len());
+                    let _ = s3_full_list_tx.send((Some(bucket_name), path.clone(), data));
                 }
                 Err(e) => {
                     tracing::error!("Failed to fetch S3 data: {}", e);
@@ -186,17 +230,24 @@ impl StateStore {
     }
 
     async fn delete_s3_data(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_delete_tx: UnboundedSender<Option<String>>) {
-        tokio::spawn(async move {
-            match s3_data_fetcher.delete_data(item.is_bucket, item.bucket.clone(), item.name.clone()).await {
-                Ok(data) => {
-                    let _ = s3_delete_tx.send(data);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to delete S3 data: {}", e);
-                    let _ = s3_delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
-                }
+        let items_with_children = self.flatten_s3_items(vec![item]);
+        for item in items_with_children {
+            if !item.is_directory {
+                let delete_tx = s3_delete_tx.clone();
+                let fetcher = s3_data_fetcher.clone();
+                tokio::spawn(async move {
+                    match fetcher.delete_data(item.is_bucket, item.bucket.clone(), item.name.clone(), item.is_directory).await {
+                        Ok(data) => {
+                            let _ = delete_tx.send(data);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to delete S3 data: {}", e);
+                            let _ = delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
+                        }
+                    }
+                });
             }
-        });
+        }
     }
 
     async fn create_bucket(&self, name: String, s3_data_fetcher: S3DataFetcher, create_bucket_tx: UnboundedSender<Option<String>>) {
@@ -231,6 +282,7 @@ impl StateStore {
         state.set_current_local_path(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string());
 
         let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
+        let (s3_full_list_tx, mut s3_full_list_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
         let (s3_deleted_tx, mut s3_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (local_deleted_tx, mut local_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
@@ -266,6 +318,12 @@ impl StateStore {
                             let _ = self.state_tx.send(state.clone());
                             let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                             self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await
+                        }
+                        Action::ListS3DataRecursiveForItem { item } => {
+                            state.set_s3_list_recursive_loading(true);
+                            let _ = self.state_tx.send(state.clone());
+                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                            self.list_s3_data_recursive(item, s3_data_fetcher, s3_full_list_tx.clone()).await
                         }
                         Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
                         Action::SelectS3Item { item} => {
@@ -336,6 +394,10 @@ impl StateStore {
                     },
                     Some((bucket, prefix, data)) = s3_rx.recv() => {
                         state.update_buckets(bucket, prefix, data);
+                        self.state_tx.send(state.clone())?;
+                    },
+                    Some((_bucket, _prefix, data)) = s3_full_list_rx.recv() => {
+                        state.update_s3_recursive_list(data);
                         self.state_tx.send(state.clone())?;
                     },
                     Some((path, files)) = local_rx.recv() => {

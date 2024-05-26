@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
+use ratatui::widgets::block::Title;
 use throbber_widgets_tui::Throbber;
 use tokio::sync::mpsc::UnboundedSender;
 use crate::model::action::Action;
@@ -22,8 +23,10 @@ struct Props {
     local_data: Vec<LocalDataItem>,
     s3_table_state: TableState,
     s3_data: Vec<S3DataItem>,
+    s3_data_full_list: Vec<S3DataItem>,
     s3_history: Vec<NavigationState>,
     s3_loading: bool,
+    s3_list_recursive_loading: bool,
     s3_selected_items: Vec<S3SelectedItem>,
     local_selected_items: Vec<LocalSelectedItem>,
     current_local_path: String,
@@ -43,8 +46,10 @@ impl From<&State> for Props {
             local_data: st.local_data,
             s3_table_state: TableState::default(),
             s3_data: st.s3_data,
+            s3_data_full_list: st.s3_data_full_list,
             s3_history: Vec::new(),
             s3_loading: st.s3_loading,
+            s3_list_recursive_loading: st.s3_list_recursive_loading,
             s3_selected_items: st.s3_selected_items,
             local_selected_items: st.local_selected_items,
             current_local_path: st.current_local_path,
@@ -70,6 +75,8 @@ pub struct FileManagerPage {
     show_problem_popup: bool,
     show_bucket_input: bool,
     show_delete_confirmation: bool,
+    show_delete_multiple_confirmation: bool,
+    show_download_confirmation: bool,
     show_delete_error: bool,
     default_navigation_state: NavigationState,
     input: Input,
@@ -155,6 +162,58 @@ impl FileManagerPage {
             );
         input
     }
+
+    fn make_confirm_download_alert(&self, text: String, text_color: Color, show_buttons: bool) -> Paragraph {
+        let ok_button = ratatui::widgets::block::Title::from(Line::from(vec![
+            Span::raw("|"),
+            Span::styled("ok", Style::default().fg(Color::Yellow)),
+            Span::raw("("),
+            Span::styled(
+                "Enter",
+                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+            ),
+            Span::raw(")"),
+            Span::raw("|"),
+        ]))
+            .alignment(Alignment::Right)
+            .position(block::Position::Bottom);
+        let cancel_button = ratatui::widgets::block::Title::from(Line::from(vec![
+            Span::raw("|"),
+            Span::styled("cancel", Style::default().fg(Color::Yellow)),
+            Span::raw("("),
+            Span::styled(
+                "Esc",
+                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+            ),
+            Span::raw(")"),
+            Span::raw("|"),
+        ]))
+            .alignment(Alignment::Left)
+            .position(block::Position::Bottom);
+        let input = Paragraph::new(text)
+            .style(Style::default().fg(text_color))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default()
+                    )
+                    .title(
+                        if show_buttons {
+                            ok_button
+                        } else {
+                            Title::default()
+                        },
+                    )
+                    .title(
+                        if show_buttons {
+                            cancel_button
+                        } else {
+                            Title::default()
+                        },
+                    )
+            );
+        input
+    }
     fn make_bucket_name_input(&self) -> Paragraph {
         let scroll = self.input.visual_scroll(INPUT_SIZE);
         let input = Paragraph::new(self.input.value())
@@ -225,10 +284,28 @@ impl FileManagerPage {
         table
     }
 
+    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
+        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<S3SelectedItem> = s3_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
+
+    fn flatten_local_items(&self, local_selected_items: Vec<LocalSelectedItem>) -> Vec<LocalSelectedItem> {
+        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
+        let single_files: Vec<LocalSelectedItem> = local_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        children.extend(single_files);
+        children
+    }
+
     fn get_status_line(&self) -> Paragraph {
-        let to_transfer = self.props.s3_selected_items.len() + self.props.local_selected_items.len();
-        let transferred = self.props.s3_selected_items.iter().filter(|i| i.transferred).count() +
-            self.props.local_selected_items.iter().filter(|i| i.transferred).count();
+        let s3_items = self.flatten_s3_items(self.props.s3_selected_items.clone());
+        let local_items = self.flatten_local_items(self.props.local_selected_items.clone());
+        let to_transfer = s3_items.len() + local_items.len();
+        let transferred = s3_items.iter().filter(|i| i.transferred).count() +
+            local_items.iter().filter(|i| i.transferred).count();
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(" Account: {} • Bucket: {} • Transfers: {}/{}", self.props.current_s3_creds.name, bucket, to_transfer, transferred))
                 .style(Style::default().fg(Color::White)).bg(Color::Blue);
@@ -253,7 +330,7 @@ impl FileManagerPage {
     }
 
     fn get_s3_row(&self, item: &S3DataItem, focus_color: Color) -> Row {
-        if Self::contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
+        if self.contains_s3_item(item, &self.props.s3_selected_items, &self.props.current_s3_creds) {
             Row::new(item.to_columns().clone()).fg(focus_color).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
@@ -261,19 +338,20 @@ impl FileManagerPage {
     }
 
     fn get_local_row(&self, item: &LocalDataItem, focus_color: Color) -> Row {
-        if Self::contains_local_item(item, &self.props.local_selected_items, &self.props.current_s3_creds) {
+        if self.contains_local_item(item, &self.props.local_selected_items, &self.props.current_s3_creds) {
             Row::new(item.to_columns().clone()).fg(focus_color).add_modifier(Modifier::REVERSED)
         } else {
             Row::new(item.to_columns().clone())
         }
     }
 
-    fn contains_s3_item(data_item: &S3DataItem, selected_items: &[S3SelectedItem], s3_creds: &FileCredential) -> bool {
-        let search_item = S3SelectedItem::from_s3_data_item(data_item.clone(), s3_creds.clone()); // Convert S3DataItem to S3SelectedItem
+    fn contains_s3_item(&self, data_item: &S3DataItem, selected_items: &[S3SelectedItem], s3_creds: &FileCredential) -> bool {
+        let destination_dir = self.props.current_local_path.clone();
+        let search_item = S3SelectedItem::from_s3_data_item(data_item.clone(), s3_creds.clone(), destination_dir.clone()); // Convert S3DataItem to S3SelectedItem
         selected_items.contains(&search_item) // Search for the item in the list
     }
 
-    fn contains_local_item(data_item: &LocalDataItem, selected_items: &[LocalSelectedItem], s3_creds: &FileCredential) -> bool {
+    fn contains_local_item(&self, data_item: &LocalDataItem, selected_items: &[LocalSelectedItem], s3_creds: &FileCredential) -> bool {
         let search_item = LocalSelectedItem::from_local_data_item(data_item.clone(), s3_creds.clone());
         selected_items.contains(&search_item) // Search for the item in the list
     }
@@ -312,15 +390,17 @@ impl FileManagerPage {
     pub fn move_up_s3_table_selection(&mut self) {
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.s3_data.is_empty() {
                     self.props.s3_data.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty(){
+        if !self.props.s3_data.is_empty() {
             self.props.s3_table_state.select(Some(i));
         }
     }
@@ -328,7 +408,7 @@ impl FileManagerPage {
     pub fn move_down_s3_table_selection(&mut self) {
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i >= self.props.s3_data.len() - 1 {
+                if !self.props.s3_data.is_empty() && i >= self.props.s3_data.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -336,7 +416,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty(){
+        if !self.props.s3_data.is_empty() {
             self.props.s3_table_state.select(Some(i));
         }
     }
@@ -344,15 +424,17 @@ impl FileManagerPage {
     pub fn move_up_local_table_selection(&mut self) {
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i == 0_usize {
+                if i == 0_usize && !self.props.local_data.is_empty() {
                     self.props.local_data.len() - 1
-                } else {
+                } else if i > 0 {
                     i - 1
+                } else {
+                    0
                 }
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty(){
+        if !self.props.local_data.is_empty() {
             self.props.local_table_state.select(Some(i));
         }
     }
@@ -360,7 +442,7 @@ impl FileManagerPage {
     pub fn move_down_local_table_selection(&mut self) {
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i >= self.props.local_data.len() - 1 {
+                if !self.props.local_data.is_empty() && i >= self.props.local_data.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -368,7 +450,7 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty(){
+        if !self.props.local_data.is_empty() {
             self.props.local_table_state.select(Some(i));
         }
     }
@@ -443,33 +525,73 @@ impl FileManagerPage {
             self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
         {
             let sr = selected_row.clone();
-            //disable sending whole buckets
-            if !sr.is_bucket {
-                let cc = self.props.current_s3_creds.clone();
-                let creds = FileCredential {
-                    default_region: sr.region.unwrap_or(cc.default_region.clone()),
-                    ..cc
-                };
-                let selected_item = S3SelectedItem::new(
-                    sr.name,
-                    sr.bucket,
-                    Some(sr.path),
-                    sr.is_directory,
-                    sr.is_bucket,
-                    self.props.current_local_path.clone(),
-                    creds,
-                );
-                if !self.props.s3_selected_items.contains(&selected_item) {
-                    let _ = self.action_tx.send(Action::SelectS3Item {
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let selected_item = S3SelectedItem::from_s3_data_item(sr.clone(), creds, self.props.current_local_path.clone());
+            if !self.props.s3_selected_items.contains(&selected_item) {
+                if selected_item.is_bucket || selected_item.is_directory {
+                    self.show_download_confirmation = true;
+                    self.props.s3_list_recursive_loading = true;
+                    let _ = self.action_tx.send(Action::ListS3DataRecursiveForItem {
                         item: selected_item
                     });
                 } else {
-                    let _ = self.action_tx.send(Action::UnselectS3Item {
+                    let _ = self.action_tx.send(Action::SelectS3Item {
                         item: selected_item
                     });
                 }
-
+            } else {
+                let _ = self.action_tx.send(Action::UnselectS3Item {
+                    item: selected_item
+                });
             }
+        }
+    }
+
+    fn finish_recursive_transfer_from_s3_to_local(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let destination_dir = self.props.current_local_path.clone();
+            let children = self.props.s3_data_full_list.iter().map(|i| S3SelectedItem::from_s3_data_item(i.clone(), creds.clone(), destination_dir.clone())).collect();
+            let selected_item = S3SelectedItem::from_s3_data_item_with_children(sr.clone(), creds.clone(), self.props.current_local_path.clone(), children);
+            if !self.props.s3_selected_items.contains(&selected_item) {
+                let _ = self.action_tx.send(Action::SelectS3Item {
+                    item: selected_item
+                });
+            } else {
+                let _ = self.action_tx.send(Action::UnselectS3Item {
+                    item: selected_item
+                });
+            }
+        }
+    }
+
+    fn finish_recursive_delete_from_s3_to_local(&mut self) {
+        if let Some(selected_row) =
+            self.props.s3_table_state.selected().and_then(|index| self.props.s3_data.get(index))
+        {
+            let sr = selected_row.clone();
+            let cc = self.props.current_s3_creds.clone();
+            let creds = FileCredential {
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
+                ..cc
+            };
+            let destination_dir = self.props.current_local_path.clone();
+            let children = self.props.s3_data_full_list.iter().map(|i| S3SelectedItem::from_s3_data_item(i.clone(), creds.clone(), destination_dir.clone())).collect();
+            let selected_item = S3SelectedItem::from_s3_data_item_with_children(sr.clone(), creds.clone(), self.props.current_local_path.clone(), children);
+            let _ = self.action_tx.send(Action::DeleteS3Item {
+                item: selected_item
+            });
         }
     }
 
@@ -491,6 +613,7 @@ impl FileManagerPage {
                     selected_bucket,
                     destination_path,
                     self.props.current_s3_creds.clone(),
+                    None,
                 );
                 if !self.props.local_selected_items.contains(&selected_item) {
                     let _ = self.action_tx.send(Action::SelectLocalItem {
@@ -514,21 +637,21 @@ impl FileManagerPage {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
             let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
                 ..cc
             };
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds,
-            );
-            let _ = self.action_tx.send(Action::DeleteS3Item {
-                item: selected_item
-            });
+            let selected_item = S3SelectedItem::from_s3_data_item(sr.clone(), creds.clone(), self.props.current_local_path.clone());
+            if selected_item.is_directory {
+                self.show_delete_multiple_confirmation = true;
+                self.props.s3_list_recursive_loading = true;
+                let _ = self.action_tx.send(Action::ListS3DataRecursiveForItem {
+                    item: selected_item
+                });
+            } else {
+                let _ = self.action_tx.send(Action::DeleteS3Item {
+                    item: selected_item
+                });
+            }
         }
     }
 
@@ -544,11 +667,11 @@ impl FileManagerPage {
                 "".to_string(),
                 self.props.current_s3_path.clone(),
                 self.props.current_s3_creds.clone(),
+                None,
             );
             let _ = self.action_tx.send(Action::DeleteLocalItem {
                 item: selected_item
             });
-            self.show_delete_confirmation = false;
         }
     }
 
@@ -585,6 +708,8 @@ impl Component for FileManagerPage {
             show_problem_popup: false,
             show_bucket_input: false,
             show_delete_confirmation: false,
+            show_delete_multiple_confirmation: false,
+            show_download_confirmation: false,
             show_delete_error: false,
             s3_panel_selected: true,
             default_navigation_state: NavigationState::new(None, None),
@@ -644,7 +769,9 @@ impl Component for FileManagerPage {
                             self.delete_selected_s3_item();
                             self.props.s3_loading = true;
                         }
-                        false => self.delete_selected_local_item()
+                        false => {
+                            self.delete_selected_local_item();
+                        }
                     }
                     self.show_delete_confirmation = false;
                 }
@@ -660,6 +787,28 @@ impl Component for FileManagerPage {
                 }
                 KeyCode::Esc => {
                     self.send_clear_delete_errors_message();
+                }
+                _ => {}
+            }
+        } else if self.show_download_confirmation && !self.props.s3_list_recursive_loading {
+            match key.code {
+                KeyCode::Enter => {
+                    self.finish_recursive_transfer_from_s3_to_local();
+                    self.show_download_confirmation = false;
+                }
+                KeyCode::Esc => {
+                    self.show_download_confirmation = false;
+                }
+                _ => {}
+            }
+        } else if self.show_delete_multiple_confirmation && !self.props.s3_list_recursive_loading {
+            match key.code {
+                KeyCode::Enter => {
+                    self.finish_recursive_delete_from_s3_to_local();
+                    self.show_delete_multiple_confirmation = false;
+                }
+                KeyCode::Esc => {
+                    self.show_delete_multiple_confirmation = false;
                 }
                 _ => {}
             }
@@ -837,6 +986,24 @@ impl ComponentRender<()> for FileManagerPage {
             let area = Self::centered_rect(60, 20, frame.size());
             frame.render_widget(Clear, area); //this clears out the background
             let block = self.make_delete_alert("Are you sure you want to delete this object?".to_string(), Color::Green);
+            frame.render_widget(block, area);
+        } else if self.show_delete_multiple_confirmation {
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area);
+            let block = if self.props.s3_list_recursive_loading {
+                self.make_confirm_download_alert("Loading selected object information recursively...".to_string(), Color::Green, false)
+            } else {
+                self.make_confirm_download_alert(format!("You have selected {} items to delete. Proceed?", self.props.s3_data_full_list.len()).to_string(), Color::Green, true)
+            };
+            frame.render_widget(block, area);
+        } else if self.show_download_confirmation {
+            let area = Self::centered_rect(60, 20, frame.size());
+            frame.render_widget(Clear, area);
+            let block = if self.props.s3_list_recursive_loading {
+                self.make_confirm_download_alert("Loading selected object information recursively...".to_string(), Color::Green, false)
+            } else {
+                self.make_confirm_download_alert(format!("You have selected {} items to download. Proceed?", self.props.s3_data_full_list.len()).to_string(), Color::Green, true)
+            };
             frame.render_widget(block, area);
         } else if self.show_delete_error {
             let possible_error = match (self.props.s3_delete_state.clone(), self.props.local_delete_state.clone()) {

@@ -10,6 +10,7 @@ pub enum Action {
     Navigate { page: ActivePage },
     FetchLocalData { path: String },
     FetchS3Data { bucket: Option<String>, prefix: Option<String> },
+    ListS3DataRecursiveForItem { item: S3SelectedItem },
     MoveBackLocal,
     SelectS3Item { item: S3SelectedItem },
     UnselectS3Item { item: S3SelectedItem },
