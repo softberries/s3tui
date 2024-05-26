@@ -33,7 +33,7 @@
 
 [s7]: https://deps.rs/repo/github/softberries/s3tui/status.svg
 
-[l7]: https://deps.rs/repo/github/softberries/s3tui
+[l7]: https://deps.rs/crate/s3tui
 
 ---
 
