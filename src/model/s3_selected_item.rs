@@ -18,21 +18,21 @@ pub struct S3SelectedItem {
 }
 
 impl S3SelectedItem {
-    pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String, s3_creds: FileCredential, children: Option<Vec<S3SelectedItem>>) -> S3SelectedItem {
-        S3SelectedItem {
-            bucket,
-            name,
-            path,
-            is_directory,
-            is_bucket,
-            destination_dir,
-            transferred: false,
-            s3_creds,
-            progress: 0f64,
-            children,
-            error: None,
-        }
-    }
+    // pub fn new(name: String, bucket: Option<String>, path: Option<String>, is_directory: bool, is_bucket: bool, destination_dir: String, s3_creds: FileCredential, children: Option<Vec<S3SelectedItem>>) -> S3SelectedItem {
+    //     S3SelectedItem {
+    //         bucket,
+    //         name,
+    //         path,
+    //         is_directory,
+    //         is_bucket,
+    //         destination_dir,
+    //         transferred: false,
+    //         s3_creds,
+    //         progress: 0f64,
+    //         children,
+    //         error: None,
+    //     }
+    // }
 
     /*
     let selected_item = S3SelectedItem::new(
@@ -79,6 +79,21 @@ impl S3SelectedItem {
             s3_creds: creds,
             progress: 0f64,
             children: None,
+            error: None,
+        }
+    }
+    pub fn from_s3_data_item_with_children(item: S3DataItem, creds: FileCredential, destination_dir: String, children: Vec<S3SelectedItem>) -> S3SelectedItem {
+        S3SelectedItem {
+            bucket: item.bucket,
+            name: item.name,
+            path: Some(item.path),
+            is_directory: item.is_directory,
+            is_bucket: item.is_bucket,
+            destination_dir: destination_dir.clone(),
+            transferred: false,
+            s3_creds: creds,
+            progress: 0f64,
+            children: Some(children),
             error: None,
         }
     }

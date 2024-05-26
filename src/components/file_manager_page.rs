@@ -523,19 +523,10 @@ impl FileManagerPage {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
             let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
                 ..cc
             };
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds,
-                None,
-            );
+            let selected_item = S3SelectedItem::from_s3_data_item(sr.clone(), creds, self.props.current_local_path.clone());
             if !self.props.s3_selected_items.contains(&selected_item) {
                 if selected_item.is_bucket || selected_item.is_directory {
                     self.show_download_confirmation = true;
@@ -563,21 +554,12 @@ impl FileManagerPage {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
             let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
                 ..cc
             };
             let destination_dir = self.props.current_local_path.clone();
             let children = self.props.s3_data_full_list.iter().map(|i| S3SelectedItem::from_s3_data_item(i.clone(), creds.clone(), destination_dir.clone())).collect();
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds.clone(),
-                Some(children),
-            );
+            let selected_item = S3SelectedItem::from_s3_data_item_with_children(sr.clone(), creds.clone(), self.props.current_local_path.clone(), children);
             if !self.props.s3_selected_items.contains(&selected_item) {
                 let _ = self.action_tx.send(Action::SelectS3Item {
                     item: selected_item
@@ -597,21 +579,12 @@ impl FileManagerPage {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
             let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
                 ..cc
             };
             let destination_dir = self.props.current_local_path.clone();
             let children = self.props.s3_data_full_list.iter().map(|i| S3SelectedItem::from_s3_data_item(i.clone(), creds.clone(), destination_dir.clone())).collect();
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds.clone(),
-                Some(children),
-            );
+            let selected_item = S3SelectedItem::from_s3_data_item_with_children(sr.clone(), creds.clone(), self.props.current_local_path.clone(), children);
             let _ = self.action_tx.send(Action::DeleteS3Item {
                 item: selected_item
             });
@@ -660,19 +633,10 @@ impl FileManagerPage {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
             let creds = FileCredential {
-                default_region: sr.region.unwrap_or(cc.default_region.clone()),
+                default_region: sr.clone().region.unwrap_or(cc.default_region.clone()),
                 ..cc
             };
-            let selected_item = S3SelectedItem::new(
-                sr.name,
-                sr.bucket,
-                Some(sr.path),
-                sr.is_directory,
-                sr.is_bucket,
-                self.props.current_local_path.clone(),
-                creds,
-                None,
-            );
+            let selected_item = S3SelectedItem::from_s3_data_item(sr.clone(), creds.clone(), self.props.current_local_path.clone());
             if selected_item.is_directory {
                 self.show_delete_multiple_confirmation = true;
                 self.props.s3_list_recursive_loading = true;
