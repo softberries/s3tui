@@ -19,9 +19,9 @@ use tokio::sync::{
 };
 use tokio_stream::StreamExt;
 
-use crate::model::action::Action;
-use crate::components::component::{Component, ComponentRender};
 use super::components::app_router::AppRouter;
+use crate::components::component::{Component, ComponentRender};
+use crate::model::action::Action;
 use crate::model::state::State;
 use crate::termination::Interrupted;
 
@@ -88,7 +88,6 @@ impl UiManager {
 
         result
     }
-
 }
 
 fn setup_terminal() -> eyre::Result<Terminal<CrosstermBackend<Stdout>>> {
@@ -113,8 +112,6 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> eyre::
     Ok(terminal.show_cursor()?)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +119,9 @@ mod tests {
     #[tokio::test]
     async fn test_ui_manager_new() {
         let (_ui_manager, mut action_rx) = UiManager::new();
-        assert!(action_rx.try_recv().is_err(), "Should start with no pending actions");
+        assert!(
+            action_rx.try_recv().is_err(),
+            "Should start with no pending actions"
+        );
     }
 }

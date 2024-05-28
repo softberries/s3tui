@@ -2,32 +2,30 @@
 //!
 //! This crate provides a simple `S3` client for managing your resources in s3 buckets.
 //! `s3tui` is a powerful terminal-based application that enables seamless file transfers between
-//! your local machine and multiple AWS S3 accounts. 
-//! Crafted with the `ratatui` Rust TUI framework, `s3tui` provides a robust user interface for managing 
-//! uploads and downloads simultaneously in both directions, 
+//! your local machine and multiple AWS S3 accounts.
+//! Crafted with the `ratatui` Rust TUI framework, `s3tui` provides a robust user interface for managing
+//! uploads and downloads simultaneously in both directions,
 //! enhancing your productivity with `S3` services.
 
 #![forbid(unsafe_code)]
-mod termination;
-mod state_store;
-mod ui_manager;
-mod model;
+mod cli;
 mod components;
+mod model;
 mod services;
 mod settings;
+mod state_store;
+mod termination;
+mod ui_manager;
 mod utils;
-mod cli;
 
 use crate::settings::file_credentials;
 use crate::state_store::StateStore;
 use crate::termination::{create_termination, Interrupted};
 use crate::ui_manager::UiManager;
-use crate::{
-    utils::{initialize_logging, initialize_panic_handler},
-};
+use crate::utils::{initialize_logging, initialize_panic_handler};
 use clap::Parser;
-use color_eyre::eyre;
 use cli::Cli;
+use color_eyre::eyre;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -43,14 +41,13 @@ async fn main() -> eyre::Result<()> {
             tokio::try_join!(
                 state_store.main_loop(terminator, action_rx, interrupt_rx.resubscribe(), creds),
                 ui_manager.main_loop(state_rx, interrupt_rx.resubscribe()),
-             )?;
+            )?;
         } else {
             eprintln!("No credentials file found, add credentials file into your $S3TUI_DATA/creds directory in your home directory.");
         }
     } else {
         eprintln!("Problem reading credential files, add at least one credentials file into $S3TUI_DATA/creds in your home directory.");
     }
-
 
     if let Ok(reason) = interrupt_rx.recv().await {
         match reason {

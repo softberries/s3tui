@@ -30,9 +30,7 @@ pub struct S3DataItem {
 }
 
 impl S3DataItem {
-    pub fn init(
-        bucket_info: BucketInfo,
-        file_info: FileInfo) -> S3DataItem {
+    pub fn init(bucket_info: BucketInfo, file_info: FileInfo) -> S3DataItem {
         S3DataItem {
             bucket: bucket_info.bucket,
             name: file_info.file_name,

@@ -1,12 +1,12 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::{prelude::*, widgets::*};
-use tokio::sync::mpsc::UnboundedSender;
-use crate::model::action::Action;
 use crate::components::component::{Component, ComponentRender};
+use crate::model::action::Action;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::model::transfer_item::TransferItem;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use ratatui::{prelude::*, widgets::*};
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Clone)]
 struct Props {
@@ -19,8 +19,16 @@ struct Props {
 impl From<&State> for Props {
     fn from(state: &State) -> Self {
         let st = state.clone();
-        let s3_items: Vec<TransferItem> = st.s3_selected_items.iter().map(|i| TransferItem::from_s3_selected_item(i.clone())).collect();
-        let local_items: Vec<TransferItem> = st.local_selected_items.iter().map(|i| TransferItem::from_local_selected_item(i.clone())).collect();
+        let s3_items: Vec<TransferItem> = st
+            .s3_selected_items
+            .iter()
+            .map(|i| TransferItem::from_s3_selected_item(i.clone()))
+            .collect();
+        let local_items: Vec<TransferItem> = st
+            .local_selected_items
+            .iter()
+            .map(|i| TransferItem::from_local_selected_item(i.clone()))
+            .collect();
 
         Props {
             table_state: TableState::default(),
@@ -43,20 +51,20 @@ pub struct TransfersPage {
 
 impl Component for TransfersPage {
     fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         TransfersPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
         }
-            .move_with_state(state)
+        .move_with_state(state)
     }
 
     fn move_with_state(self, state: &State) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         let new_props = Props::from(state);
         TransfersPage {
@@ -91,16 +99,22 @@ impl Component for TransfersPage {
                 let _ = self.action_tx.send(Action::RunTransfers);
             }
             KeyCode::Char('s') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::S3Creds });
+                let _ = self.action_tx.send(Action::Navigate {
+                    page: ActivePage::S3Creds,
+                });
             }
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
+                let _ = self.action_tx.send(Action::Navigate {
+                    page: ActivePage::Help,
+                });
             }
             KeyCode::Esc => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManager });
+                let _ = self.action_tx.send(Action::Navigate {
+                    page: ActivePage::FileManager,
+                });
             }
             _ => {}
         }
@@ -129,7 +143,8 @@ impl TransfersPage {
     pub fn move_down_table_selection(&mut self) {
         let i = match self.props.table_state.selected() {
             Some(i) => {
-                if !self.props.selected_items.is_empty() && i >= self.props.selected_items.len() - 1 {
+                if !self.props.selected_items.is_empty() && i >= self.props.selected_items.len() - 1
+                {
                     0
                 } else {
                     i + 1
@@ -143,42 +158,59 @@ impl TransfersPage {
     }
 
     pub fn unselect_transfer_item(&mut self) {
-        if let Some(selected_row) =
-            self.props.table_state.selected().and_then(|index| self.props.selected_items.get(index))
+        if let Some(selected_row) = self
+            .props
+            .table_state
+            .selected()
+            .and_then(|index| self.props.selected_items.get(index))
         {
             let sr = selected_row.clone();
             if let Some(s3_item) = self.find_s3_item_from_transfer_item(&sr) {
                 let _ = self.action_tx.send(Action::UnselectS3Item {
-                    item: s3_item.clone()
+                    item: s3_item.clone(),
                 });
             }
             if let Some(local_item) = self.find_local_item_from_transfer_item(&sr) {
                 let _ = self.action_tx.send(Action::UnselectLocalItem {
-                    item: local_item.clone()
+                    item: local_item.clone(),
                 });
             }
         }
     }
-    fn find_s3_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<S3SelectedItem> {
-        self.props.s3_selected_items.iter().find(|&item| {
-            if item.is_bucket {
-                item.name == transfer_item.name
-                    && item.destination_dir == transfer_item.destination_dir
-            } else {
-                item.name == transfer_item.name
-                    && item.path == transfer_item.path
-                    && item.destination_dir == transfer_item.destination_dir
-            }
-        }).cloned()
+    fn find_s3_item_from_transfer_item(
+        &self,
+        transfer_item: &TransferItem,
+    ) -> Option<S3SelectedItem> {
+        self.props
+            .s3_selected_items
+            .iter()
+            .find(|&item| {
+                if item.is_bucket {
+                    item.name == transfer_item.name
+                        && item.destination_dir == transfer_item.destination_dir
+                } else {
+                    item.name == transfer_item.name
+                        && item.path == transfer_item.path
+                        && item.destination_dir == transfer_item.destination_dir
+                }
+            })
+            .cloned()
     }
-    fn find_local_item_from_transfer_item(&self, transfer_item: &TransferItem) -> Option<LocalSelectedItem> {
-        self.props.local_selected_items.iter().find(|&item| {
-            item.destination_bucket == transfer_item.bucket
-                && item.name == transfer_item.name
-                && item.path.as_str() == transfer_item.path.as_deref().unwrap_or("")
-                && item.destination_path == transfer_item.destination_dir
-                && item.s3_creds == transfer_item.s3_creds
-        }).cloned()
+    fn find_local_item_from_transfer_item(
+        &self,
+        transfer_item: &TransferItem,
+    ) -> Option<LocalSelectedItem> {
+        self.props
+            .local_selected_items
+            .iter()
+            .find(|&item| {
+                item.destination_bucket == transfer_item.bucket
+                    && item.name == transfer_item.name
+                    && item.path.as_str() == transfer_item.path.as_deref().unwrap_or("")
+                    && item.destination_path == transfer_item.destination_dir
+                    && item.s3_creds == transfer_item.s3_creds
+            })
+            .cloned()
     }
 
     fn get_row(&self, item: &TransferItem) -> Row {
@@ -192,17 +224,32 @@ impl TransfersPage {
     }
 
     fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
-        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
+            .iter()
+            .map(|i| i.clone().children.unwrap_or_default())
+            .collect();
         let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<S3SelectedItem> = s3_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        let single_files: Vec<S3SelectedItem> = s3_selected_items
+            .into_iter()
+            .filter(|i| i.children.is_none())
+            .collect();
         children.extend(single_files);
         children
     }
 
-    fn flatten_local_items(&self, local_selected_items: Vec<LocalSelectedItem>) -> Vec<LocalSelectedItem> {
-        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+    fn flatten_local_items(
+        &self,
+        local_selected_items: Vec<LocalSelectedItem>,
+    ) -> Vec<LocalSelectedItem> {
+        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items
+            .iter()
+            .map(|i| i.clone().children.unwrap_or_default())
+            .collect();
         let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<LocalSelectedItem> = local_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        let single_files: Vec<LocalSelectedItem> = local_selected_items
+            .into_iter()
+            .filter(|i| i.children.is_none())
+            .collect();
         children.extend(single_files);
         children
     }
@@ -210,35 +257,78 @@ impl TransfersPage {
         let s3_items = self.flatten_s3_items(self.props.s3_selected_items.clone());
         let local_items = self.flatten_local_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.transferred).count() +
-            local_items.iter().filter(|i| i.transferred).count();
+        let transferred = s3_items.iter().filter(|i| i.transferred).count()
+            + local_items.iter().filter(|i| i.transferred).count();
         Paragraph::new(format!(" Transfers: {}/{}", to_transfer, transferred))
-            .style(Style::default().fg(Color::White)).bg(Color::Blue)
+            .style(Style::default().fg(Color::White))
+            .bg(Color::Blue)
     }
 
     fn get_help_line(&self) -> Paragraph {
         if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
             Paragraph::new("| 'Esc' - file manager, 's' to select s3 account, ⌫ to remove ")
-                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .style(Style::default().fg(Color::White))
+                .bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
             Paragraph::new("| Press 'r' to run the transfers ")
-                .style(Style::default().fg(Color::White)).bg(Color::Blue)
+                .style(Style::default().fg(Color::White))
+                .bg(Color::Blue)
                 .alignment(Alignment::Right)
         }
     }
 
     fn get_transfers_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
-        let header =
-            Row::new(vec!["Up/Down", "Bucket", "Item", "Destination", "S3 Account", "Progress", "Error?"]).fg(focus_color).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.selected_items.iter().map(|item| TransfersPage::get_row(self, item));
-        let widths = [Constraint::Length(5), Constraint::Length(15), Constraint::Length(20), Constraint::Length(20), Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)];
+        let header = Row::new(vec![
+            "Up/Down",
+            "Bucket",
+            "Item",
+            "Destination",
+            "S3 Account",
+            "Progress",
+            "Error?",
+        ])
+        .fg(focus_color)
+        .bold()
+        .underlined()
+        .height(1)
+        .bottom_margin(0);
+        let rows = self
+            .props
+            .selected_items
+            .iter()
+            .map(|item| TransfersPage::get_row(self, item));
+        let widths = [
+            Constraint::Length(5),
+            Constraint::Length(15),
+            Constraint::Length(20),
+            Constraint::Length(20),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(10),
+        ];
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title("Transfers List"))
-            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
-            .widths([Constraint::Percentage(5), Constraint::Percentage(15), Constraint::Percentage(20), Constraint::Percentage(20), Constraint::Percentage(10), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Transfers List"),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(focus_color)
+                    .add_modifier(Modifier::REVERSED),
+            )
+            .widths([
+                Constraint::Percentage(5),
+                Constraint::Percentage(15),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+                Constraint::Percentage(10),
+                Constraint::Percentage(10),
+                Constraint::Percentage(10),
+            ]);
         table
     }
 }
@@ -248,12 +338,16 @@ impl ComponentRender<()> for TransfersPage {
         let vertical_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0),   // Take all space left after accounting for the bottom line
-                Constraint::Length(1) // Exactly one line for the bottom
+                Constraint::Min(0),    // Take all space left after accounting for the bottom line
+                Constraint::Length(1), // Exactly one line for the bottom
             ])
             .split(frame.size());
         let table = self.get_transfers_table();
-        frame.render_stateful_widget(&table, vertical_chunks[0], &mut self.props.clone().table_state);
+        frame.render_stateful_widget(
+            &table,
+            vertical_chunks[0],
+            &mut self.props.clone().table_state,
+        );
         let status_line = self.get_status_line();
         let help_line = self.get_help_line();
         let status_line_layout = Layout::default()
@@ -268,15 +362,15 @@ impl ComponentRender<()> for TransfersPage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    use tokio::sync::mpsc;
     use crate::model::local_selected_item::LocalSelectedItem;
     use crate::model::s3_selected_item::S3SelectedItem;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_key_event_handling() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let state = State::default();  // Assume State::default() properly initializes the state
+        let state = State::default(); // Assume State::default() properly initializes the state
         let mut page = TransfersPage::new(&state, tx);
 
         // Test 'r' key for triggering run transfers
@@ -286,7 +380,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(rx.recv().await.unwrap(), Action::RunTransfers, "Should send RunTransfers action");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::RunTransfers,
+            "Should send RunTransfers action"
+        );
 
         // Test 'q' key for exit action
         page.handle_key_event(KeyEvent {
@@ -295,7 +393,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(rx.recv().await.unwrap(), Action::Exit, "Should send Exit action");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Exit,
+            "Should send Exit action"
+        );
 
         // Test 's' key for navigation to S3Creds page
         page.handle_key_event(KeyEvent {
@@ -304,7 +406,13 @@ mod tests {
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::S3Creds }, "Should navigate to S3Creds");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Navigate {
+                page: ActivePage::S3Creds
+            },
+            "Should navigate to S3Creds"
+        );
 
         // Test '?' key for navigation to Help page
         page.handle_key_event(KeyEvent {
@@ -313,7 +421,13 @@ mod tests {
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::Help }, "Should navigate to Help Page");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Navigate {
+                page: ActivePage::Help
+            },
+            "Should navigate to Help Page"
+        );
 
         // Test '?' key for navigation back to FileManager page
         page.handle_key_event(KeyEvent {
@@ -322,7 +436,13 @@ mod tests {
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::FileManager }, "Should navigate to FileManager Page");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Navigate {
+                page: ActivePage::FileManager
+            },
+            "Should navigate to FileManager Page"
+        );
     }
 
     #[tokio::test]
@@ -332,8 +452,15 @@ mod tests {
         let page = TransfersPage::new(&state, tx);
 
         // Assuming Props::from(&state) initializes TableStates as default and copies selected items lists
-        assert!(page.props.table_state.selected().is_none(), "table state should be initialized to default");
-        assert_eq!(page.props.selected_items.len(), state.s3_selected_items.len(), "selected items should match state");
+        assert!(
+            page.props.table_state.selected().is_none(),
+            "table state should be initialized to default"
+        );
+        assert_eq!(
+            page.props.selected_items.len(),
+            state.s3_selected_items.len(),
+            "selected items should match state"
+        );
     }
 
     #[test]
@@ -379,7 +506,10 @@ mod tests {
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
-        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Red));
+        assert_eq!(
+            res,
+            Row::new(transfer_item.to_columns().clone()).fg(Color::Red)
+        );
     }
 
     #[test]
@@ -402,7 +532,10 @@ mod tests {
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
-        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Blue));
+        assert_eq!(
+            res,
+            Row::new(transfer_item.to_columns().clone()).fg(Color::Blue)
+        );
     }
 
     #[test]
@@ -446,7 +579,10 @@ mod tests {
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
-        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Blue));
+        assert_eq!(
+            res,
+            Row::new(transfer_item.to_columns().clone()).fg(Color::Blue)
+        );
     }
 
     #[test]
@@ -468,6 +604,9 @@ mod tests {
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
-        assert_eq!(res, Row::new(transfer_item.to_columns().clone()).fg(Color::Red));
+        assert_eq!(
+            res,
+            Row::new(transfer_item.to_columns().clone()).fg(Color::Red)
+        );
     }
 }

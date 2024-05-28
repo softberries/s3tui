@@ -1,12 +1,12 @@
-use std::path::Path;
-use color_eyre::{Report, Result};
-use tokio::fs;
-use humansize::{FileSize, file_size_opts as options};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use crate::model::local_data_item::LocalDataItem;
+use color_eyre::{Report, Result};
+use humansize::{file_size_opts as options, FileSize};
+use std::path::Path;
+use std::sync::Arc;
+use tokio::fs;
+use tokio::sync::Mutex;
 
-/// Handles information with the local file system 
+/// Handles information with the local file system
 #[derive(Clone, Default)]
 pub struct LocalDataFetcher {
     current_dir: Arc<Mutex<String>>,
@@ -15,7 +15,7 @@ pub struct LocalDataFetcher {
 impl LocalDataFetcher {
     pub fn new() -> Self {
         LocalDataFetcher {
-            current_dir: Arc::new(Mutex::new(String::new()))
+            current_dir: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -30,13 +30,17 @@ impl LocalDataFetcher {
         let path = Path::new(&current_dir);
         let parent_path = match path.parent() {
             Some(p_path) => p_path.to_path_buf(),
-            None => path.to_path_buf()
+            None => path.to_path_buf(),
         };
         let parent_path_cow = parent_path.to_string_lossy();
-        self.read_directory(Some(String::from(parent_path_cow.as_ref()))).await
+        self.read_directory(Some(String::from(parent_path_cow.as_ref())))
+            .await
     }
 
-    pub async fn read_directory(&self, absolute_path_str: Option<String>) -> Result<Vec<LocalDataItem>> {
+    pub async fn read_directory(
+        &self,
+        absolute_path_str: Option<String>,
+    ) -> Result<Vec<LocalDataItem>> {
         let mut files_info = Vec::new();
         let home_dir = dirs::home_dir().unwrap();
         if let Some(path) = absolute_path_str {
@@ -53,18 +57,29 @@ impl LocalDataFetcher {
             let path = entry.path();
             let metadata = entry.metadata().await?;
 
-            let file_name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-            let extension_cow = path.extension()
+            let file_name = path
+                .file_name()
                 .unwrap_or_default()
-                .to_string_lossy();
+                .to_string_lossy()
+                .into_owned();
+            let extension_cow = path.extension().unwrap_or_default().to_string_lossy();
             let extension = extension_cow.as_ref();
             let path_cow = path.to_string_lossy();
             let path_str = path_cow.as_ref();
             let is_directory = metadata.is_dir();
-            let size = metadata.len().file_size(options::CONVENTIONAL).unwrap_or_else(|_| "0 B".to_string());
+            let size = metadata
+                .len()
+                .file_size(options::CONVENTIONAL)
+                .unwrap_or_else(|_| "0 B".to_string());
             let file_type = if is_directory { "Dir" } else { extension };
 
-            files_info.push(LocalDataItem::init(file_name, size, file_type, path_str, is_directory));
+            files_info.push(LocalDataItem::init(
+                file_name,
+                size,
+                file_type,
+                path_str,
+                is_directory,
+            ));
         }
 
         Ok(files_info)
@@ -73,7 +88,7 @@ impl LocalDataFetcher {
         let result = fs::remove_dir_all(absolute_path_str.clone()).await;
         match result {
             Ok(_) => Ok(absolute_path_str.clone()),
-            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e)))
+            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e))),
         }
     }
 
@@ -81,7 +96,7 @@ impl LocalDataFetcher {
         let result = fs::remove_file(absolute_path_str.clone()).await;
         match result {
             Ok(_) => Ok(absolute_path_str.clone()),
-            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e)))
+            Err(e) => Err(Report::msg(format!("Failed to delete directory {:?}", e))),
         }
     }
 }
@@ -89,20 +104,27 @@ impl LocalDataFetcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
     use tokio::fs::{self, File};
     use tokio::io::AsyncWriteExt;
-    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_new() {
         let fetcher = LocalDataFetcher::new();
-        assert!(fetcher.current_dir.lock().await.is_empty(), "Initial directory should be empty");
+        assert!(
+            fetcher.current_dir.lock().await.is_empty(),
+            "Initial directory should be empty"
+        );
     }
 
     #[tokio::test]
     async fn test_get_current_dir() {
         let fetcher = LocalDataFetcher::new();
-        assert_eq!(fetcher.get_current_dir().await, "", "Should return the initial empty directory");
+        assert_eq!(
+            fetcher.get_current_dir().await,
+            "",
+            "Should return the initial empty directory"
+        );
     }
 
     #[tokio::test]
@@ -118,8 +140,15 @@ mod tests {
         }
 
         let parent_dir_files = fetcher.read_parent_directory().await?;
-        assert_eq!(parent_dir_files.len(), 1, "Should contain one directory entry");
-        assert!(parent_dir_files.iter().any(|f| f.name == "subdir"), "Should include the subdir");
+        assert_eq!(
+            parent_dir_files.len(),
+            1,
+            "Should contain one directory entry"
+        );
+        assert!(
+            parent_dir_files.iter().any(|f| f.name == "subdir"),
+            "Should include the subdir"
+        );
         Ok(())
     }
 
@@ -136,9 +165,16 @@ mod tests {
             *current_dir = dir.path().to_str().unwrap().to_string();
         }
 
-        let files = fetcher.read_directory(Some(fetcher.get_current_dir().await)).await?;
+        let files = fetcher
+            .read_directory(Some(fetcher.get_current_dir().await))
+            .await?;
         assert_eq!(files.len(), 1, "Should contain one file entry");
-        assert!(files.iter().any(|f| f.name == "file.txt" && f.is_directory == false), "Should correctly identify the file");
+        assert!(
+            files
+                .iter()
+                .any(|f| f.name == "file.txt" && f.is_directory == false),
+            "Should correctly identify the file"
+        );
 
         Ok(())
     }

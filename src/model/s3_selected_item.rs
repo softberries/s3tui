@@ -18,7 +18,11 @@ pub struct S3SelectedItem {
 }
 
 impl S3SelectedItem {
-    pub fn from_s3_data_item(item: S3DataItem, creds: FileCredential, destination_dir: String) -> S3SelectedItem {
+    pub fn from_s3_data_item(
+        item: S3DataItem,
+        creds: FileCredential,
+        destination_dir: String,
+    ) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
             name: item.name,
@@ -33,7 +37,12 @@ impl S3SelectedItem {
             error: None,
         }
     }
-    pub fn from_s3_data_item_with_children(item: S3DataItem, creds: FileCredential, destination_dir: String, children: Vec<S3SelectedItem>) -> S3SelectedItem {
+    pub fn from_s3_data_item_with_children(
+        item: S3DataItem,
+        creds: FileCredential,
+        destination_dir: String,
+        children: Vec<S3SelectedItem>,
+    ) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
             name: item.name,
@@ -50,14 +59,13 @@ impl S3SelectedItem {
     }
 }
 
-
 impl PartialEq for S3SelectedItem {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name &&
-            self.bucket == other.bucket &&
-            self.path == other.path &&
-            self.is_directory == other.is_directory &&
-            self.is_bucket == other.is_bucket
+        self.name == other.name
+            && self.bucket == other.bucket
+            && self.path == other.path
+            && self.is_directory == other.is_directory
+            && self.is_bucket == other.is_bucket
     }
 }
 
@@ -98,9 +106,7 @@ mod tests {
             selected: true,
         };
         let destination_dir = "/".into();
-        let res = S3SelectedItem::from_s3_data_item(
-            s3_data_item, creds, destination_dir,
-        );
+        let res = S3SelectedItem::from_s3_data_item(s3_data_item, creds, destination_dir);
         assert_eq!(item, res);
     }
 
@@ -151,7 +157,10 @@ mod tests {
         };
         let destination_dir = "/".into();
         let res = S3SelectedItem::from_s3_data_item_with_children(
-            s3_data_item, creds, destination_dir, vec![child]
+            s3_data_item,
+            creds,
+            destination_dir,
+            vec![child],
         );
         assert_eq!(item, res);
         assert_eq!(item.children.unwrap(), res.children.unwrap());

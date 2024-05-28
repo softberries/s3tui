@@ -1,7 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use crate::model::local_data_item::LocalDataItem;
 use crate::settings::file_credentials::FileCredential;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Keeps the information about the selected file which is later displayed on the transfers page
 #[derive(Debug, Clone)]
@@ -19,7 +19,15 @@ pub struct LocalSelectedItem {
 }
 
 impl LocalSelectedItem {
-    pub fn new(name: String, path: String, is_directory: bool, destination_bucket: String, destination_path: String, s3_creds: FileCredential, children: Option<Vec<LocalSelectedItem>>) -> LocalSelectedItem {
+    pub fn new(
+        name: String,
+        path: String,
+        is_directory: bool,
+        destination_bucket: String,
+        destination_path: String,
+        s3_creds: FileCredential,
+        children: Option<Vec<LocalSelectedItem>>,
+    ) -> LocalSelectedItem {
         LocalSelectedItem {
             name,
             path,
@@ -86,7 +94,8 @@ impl LocalSelectedItem {
                             destination_bucket: item.destination_bucket.clone(),
                             destination_path: PathBuf::from(&item.destination_path)
                                 .join(path.file_name().unwrap().to_string_lossy().into_owned())
-                                .to_string_lossy().into(),
+                                .to_string_lossy()
+                                .into(),
                             transferred: false,
                             s3_creds: item.s3_creds.clone(),
                             progress: 0.0,
@@ -102,7 +111,8 @@ impl LocalSelectedItem {
                             destination_bucket: item.destination_bucket.clone(),
                             destination_path: PathBuf::from(&item.destination_path)
                                 .join(path.file_name().unwrap().to_string_lossy().into_owned())
-                                .to_string_lossy().into(),
+                                .to_string_lossy()
+                                .into(),
                             transferred: false,
                             s3_creds: item.s3_creds.clone(),
                             progress: 0.0,
@@ -119,12 +129,11 @@ impl LocalSelectedItem {
     }
 }
 
-
 impl PartialEq for LocalSelectedItem {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name &&
-            self.path == other.path &&
-            self.is_directory == other.is_directory
+        self.name == other.name
+            && self.path == other.path
+            && self.is_directory == other.is_directory
     }
 }
 

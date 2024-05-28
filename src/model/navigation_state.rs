@@ -1,5 +1,5 @@
-/// Keeps the information about currently selected bucket and directory (prefix) 
-/// to help with navigation on s3 
+/// Keeps the information about currently selected bucket and directory (prefix)
+/// to help with navigation on s3
 #[derive(Clone, Debug)]
 pub struct NavigationState {
     pub current_bucket: Option<String>,

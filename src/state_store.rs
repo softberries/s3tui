@@ -1,23 +1,23 @@
 //! This module provides functionality for interactions between UI and state
-use std::path::Path;
-use std::time::Duration;
-use color_eyre::eyre;
-use tokio::sync::{broadcast, mpsc};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use crate::services::local_data_fetcher::LocalDataFetcher;
-use crate::services::s3_data_fetcher::S3DataFetcher;
 use crate::model::action::Action;
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::upload_progress_item::UploadProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
+use crate::model::upload_progress_item::UploadProgressItem;
+use crate::services::local_data_fetcher::LocalDataFetcher;
+use crate::services::s3_data_fetcher::S3DataFetcher;
 use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
+use color_eyre::eyre;
+use std::path::Path;
+use std::time::Duration;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{broadcast, mpsc};
 
-/// Handles all the actions, calls methods on external services and updates the state when necessary 
+/// Handles all the actions, calls methods on external services and updates the state when necessary
 pub struct StateStore {
     state_tx: UnboundedSender<State>,
 }
@@ -32,21 +32,42 @@ impl StateStore {
 
 impl StateStore {
     fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
-        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
+            .iter()
+            .map(|i| i.clone().children.unwrap_or_default())
+            .collect();
         let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<S3SelectedItem> = s3_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        let single_files: Vec<S3SelectedItem> = s3_selected_items
+            .into_iter()
+            .filter(|i| i.children.is_none())
+            .collect();
         children.extend(single_files);
         children
     }
 
-    fn flatten_local_items(&self, local_selected_items: Vec<LocalSelectedItem>) -> Vec<LocalSelectedItem> {
-        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items.iter().map(|i| i.clone().children.unwrap_or_default()).collect();
+    fn flatten_local_items(
+        &self,
+        local_selected_items: Vec<LocalSelectedItem>,
+    ) -> Vec<LocalSelectedItem> {
+        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items
+            .iter()
+            .map(|i| i.clone().children.unwrap_or_default())
+            .collect();
         let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<LocalSelectedItem> = local_selected_items.into_iter().filter(|i| i.children.is_none()).collect();
+        let single_files: Vec<LocalSelectedItem> = local_selected_items
+            .into_iter()
+            .filter(|i| i.children.is_none())
+            .collect();
         children.extend(single_files);
         children
     }
-    async fn download_data(&self, s3_data_fetcher: &S3DataFetcher, s3_selected_items: Vec<S3SelectedItem>, selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>, download_tx: UnboundedSender<DownloadProgressItem>) {
+    async fn download_data(
+        &self,
+        s3_data_fetcher: &S3DataFetcher,
+        s3_selected_items: Vec<S3SelectedItem>,
+        selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
+        download_tx: UnboundedSender<DownloadProgressItem>,
+    ) {
         let items_with_children = self.flatten_s3_items(s3_selected_items);
         for item in items_with_children {
             if !item.is_bucket && !item.is_directory {
@@ -79,7 +100,13 @@ impl StateStore {
         }
     }
 
-    async fn upload_data(&self, s3_data_fetcher: &S3DataFetcher, local_selected_items: Vec<LocalSelectedItem>, selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>, upload_tx: UnboundedSender<UploadProgressItem>) {
+    async fn upload_data(
+        &self,
+        s3_data_fetcher: &S3DataFetcher,
+        local_selected_items: Vec<LocalSelectedItem>,
+        selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>,
+        upload_tx: UnboundedSender<UploadProgressItem>,
+    ) {
         let items_with_children = self.flatten_local_items(local_selected_items);
         for item in items_with_children {
             if !item.is_directory {
@@ -112,9 +139,18 @@ impl StateStore {
         }
     }
 
-    async fn fetch_s3_data(&self, bucket: Option<String>, prefix: Option<String>, s3_data_fetcher: S3DataFetcher, s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
+    async fn fetch_s3_data(
+        &self,
+        bucket: Option<String>,
+        prefix: Option<String>,
+        s3_data_fetcher: S3DataFetcher,
+        s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>,
+    ) {
         tokio::spawn(async move {
-            match s3_data_fetcher.list_current_location(bucket.clone(), prefix.clone()).await {
+            match s3_data_fetcher
+                .list_current_location(bucket.clone(), prefix.clone())
+                .await
+            {
                 Ok(data) => {
                     let _ = s3_tx.send((bucket.clone(), prefix.clone(), data));
                 }
@@ -125,7 +161,12 @@ impl StateStore {
         });
     }
 
-    async fn list_s3_data_recursive(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_full_list_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>) {
+    async fn list_s3_data_recursive(
+        &self,
+        item: S3SelectedItem,
+        s3_data_fetcher: S3DataFetcher,
+        s3_full_list_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>,
+    ) {
         tracing::info!("list_s3_Data_recursive");
         tokio::spawn(async move {
             let bucket_name = if item.is_bucket {
@@ -138,7 +179,10 @@ impl StateStore {
             } else {
                 item.path.clone()
             };
-            match s3_data_fetcher.list_all_objects(&bucket_name, path.clone()).await {
+            match s3_data_fetcher
+                .list_all_objects(&bucket_name, path.clone())
+                .await
+            {
                 Ok(data) => {
                     tracing::info!("Downloaded items: {}", data.len());
                     let _ = s3_full_list_tx.send((Some(bucket_name), path.clone(), data));
@@ -150,7 +194,12 @@ impl StateStore {
         });
     }
 
-    async fn fetch_local_data(&self, dir_path: Option<String>, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
+    async fn fetch_local_data(
+        &self,
+        dir_path: Option<String>,
+        local_data_fetcher: LocalDataFetcher,
+        local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>,
+    ) {
         let path = Self::get_directory_path(dir_path);
         tokio::spawn(async move {
             match local_data_fetcher.read_directory(path.clone()).await {
@@ -181,7 +230,12 @@ impl StateStore {
         }
     }
 
-    async fn move_back_local_data(&self, current_path: String, local_data_fetcher: LocalDataFetcher, local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>) {
+    async fn move_back_local_data(
+        &self,
+        current_path: String,
+        local_data_fetcher: LocalDataFetcher,
+        local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>,
+    ) {
         tokio::spawn(async move {
             let path = Path::new(&current_path);
 
@@ -200,7 +254,12 @@ impl StateStore {
         });
     }
 
-    async fn delete_local_data(&self, item: LocalSelectedItem, local_data_fetcher: LocalDataFetcher, local_deleted_tx: UnboundedSender<Option<String>>) {
+    async fn delete_local_data(
+        &self,
+        item: LocalSelectedItem,
+        local_data_fetcher: LocalDataFetcher,
+        local_deleted_tx: UnboundedSender<Option<String>>,
+    ) {
         let path = item.path.clone();
         if item.is_directory {
             tokio::spawn(async move {
@@ -229,20 +288,34 @@ impl StateStore {
         }
     }
 
-    async fn delete_s3_data(&self, item: S3SelectedItem, s3_data_fetcher: S3DataFetcher, s3_delete_tx: UnboundedSender<Option<String>>) {
+    async fn delete_s3_data(
+        &self,
+        item: S3SelectedItem,
+        s3_data_fetcher: S3DataFetcher,
+        s3_delete_tx: UnboundedSender<Option<String>>,
+    ) {
         let items_with_children = self.flatten_s3_items(vec![item]);
         for item in items_with_children {
             if !item.is_directory {
                 let delete_tx = s3_delete_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
                 tokio::spawn(async move {
-                    match fetcher.delete_data(item.is_bucket, item.bucket.clone(), item.name.clone(), item.is_directory).await {
+                    match fetcher
+                        .delete_data(
+                            item.is_bucket,
+                            item.bucket.clone(),
+                            item.name.clone(),
+                            item.is_directory,
+                        )
+                        .await
+                    {
                         Ok(data) => {
                             let _ = delete_tx.send(data);
                         }
                         Err(e) => {
                             tracing::error!("Failed to delete S3 data: {}", e);
-                            let _ = delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
+                            let _ =
+                                delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
                         }
                     }
                 });
@@ -250,9 +323,17 @@ impl StateStore {
         }
     }
 
-    async fn create_bucket(&self, name: String, s3_data_fetcher: S3DataFetcher, create_bucket_tx: UnboundedSender<Option<String>>) {
+    async fn create_bucket(
+        &self,
+        name: String,
+        s3_data_fetcher: S3DataFetcher,
+        create_bucket_tx: UnboundedSender<Option<String>>,
+    ) {
         tokio::spawn(async move {
-            match s3_data_fetcher.create_bucket(name.clone(), s3_data_fetcher.default_region.clone()).await {
+            match s3_data_fetcher
+                .create_bucket(name.clone(), s3_data_fetcher.default_region.clone())
+                .await
+            {
                 Ok(data) => {
                     let _ = create_bucket_tx.send(data);
                 }
@@ -279,21 +360,43 @@ impl StateStore {
         let mut state = State::new(creds.clone());
         let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
         state.set_s3_loading(true);
-        state.set_current_local_path(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string());
+        state.set_current_local_path(
+            dirs::home_dir()
+                .unwrap()
+                .as_path()
+                .to_string_lossy()
+                .to_string(),
+        );
 
-        let (s3_tx, mut s3_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
-        let (s3_full_list_tx, mut s3_full_list_rx) = mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
+        let (s3_tx, mut s3_rx) =
+            mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
+        let (s3_full_list_tx, mut s3_full_list_rx) =
+            mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
         let (s3_deleted_tx, mut s3_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (local_deleted_tx, mut local_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
-        let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) = mpsc::unbounded_channel::<S3SelectedItem>();
-        let (selected_local_transfers_tx, mut selected_local_transfers_rx) = mpsc::unbounded_channel::<LocalSelectedItem>();
+        let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) =
+            mpsc::unbounded_channel::<S3SelectedItem>();
+        let (selected_local_transfers_tx, mut selected_local_transfers_rx) =
+            mpsc::unbounded_channel::<LocalSelectedItem>();
         let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<UploadProgressItem>();
         let (download_tx, mut download_rx) = mpsc::unbounded_channel::<DownloadProgressItem>();
         let (create_bucket_tx, mut create_bucket_rx) = mpsc::unbounded_channel::<Option<String>>();
 
-        self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone()).await;
-        self.fetch_local_data(Some(dirs::home_dir().unwrap().as_path().to_string_lossy().to_string()), local_data_fetcher.clone(), local_tx.clone()).await;
+        self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone())
+            .await;
+        self.fetch_local_data(
+            Some(
+                dirs::home_dir()
+                    .unwrap()
+                    .as_path()
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            local_data_fetcher.clone(),
+            local_tx.clone(),
+        )
+        .await;
 
         // the initial state once
         self.state_tx.send(state.clone())?;
@@ -302,138 +405,138 @@ impl StateStore {
 
         let result = loop {
             tokio::select! {
-                    Some(action) = action_rx.recv() => match action {
-                        Action::Exit => {
-                            let _ = terminator.terminate(Interrupted::UserInt);
-                            break Interrupted::UserInt;
-                        },
-                        Action::Navigate { page} => {
-                            state.set_active_page(page);
-                            let _ = self.state_tx.send(state.clone());
-                        }
-                        Action::FetchLocalData { path} =>
-                            self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
-                        Action::FetchS3Data { bucket, prefix } => {
-                            state.set_s3_loading(true);
-                            let _ = self.state_tx.send(state.clone());
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                            self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await
-                        }
-                        Action::ListS3DataRecursiveForItem { item } => {
-                            state.set_s3_list_recursive_loading(true);
-                            let _ = self.state_tx.send(state.clone());
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                            self.list_s3_data_recursive(item, s3_data_fetcher, s3_full_list_tx.clone()).await
-                        }
-                        Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
-                        Action::SelectS3Item { item} => {
-                            state.add_s3_selected_item(item);
-                            let _ = self.state_tx.send(state.clone());
-                        },
-                        Action::UnselectS3Item { item} => {
-                            state.remove_s3_selected_item(item);
-                            let _ = self.state_tx.send(state.clone());
-                        },
-                        Action::SelectLocalItem { item} => {
-                            state.add_local_selected_item(item);
-                            let _ = self.state_tx.send(state.clone());
-                        },
-                        Action::UnselectLocalItem { item } => {
-                            state.remove_local_selected_item(item);
-                            let _ = self.state_tx.send(state.clone());
-                        },
-                        Action::RunTransfers => {
-                            state.remove_already_transferred_items();
-                            let st = state.clone();
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&st);
-                            self.download_data(&s3_data_fetcher, st.s3_selected_items, selected_s3_transfers_tx.clone(), download_tx.clone()).await;
-                            self.upload_data(&s3_data_fetcher, st.local_selected_items, selected_local_transfers_tx.clone(), upload_tx.clone()).await;
-                        },
-                        Action::SelectCurrentS3Creds { item} => {
-                            state.set_current_s3_creds(item);
-                            let _ = self.state_tx.send(state.clone());
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                            self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
-                        },
-                        Action::DeleteS3Item { item} => {
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                            tracing::info!("deleting s3 item...{:?}", item.clone());
-                            self.delete_s3_data(item.clone(), s3_data_fetcher.clone(), s3_deleted_tx.clone()).await;
-                            if item.is_bucket {
+                        Some(action) = action_rx.recv() => match action {
+                            Action::Exit => {
+                                let _ = terminator.terminate(Interrupted::UserInt);
+                                break Interrupted::UserInt;
+                            },
+                            Action::Navigate { page} => {
+                                state.set_active_page(page);
+                                let _ = self.state_tx.send(state.clone());
+                            }
+                            Action::FetchLocalData { path} =>
+                                self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
+                            Action::FetchS3Data { bucket, prefix } => {
+                                state.set_s3_loading(true);
+                                let _ = self.state_tx.send(state.clone());
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await
+                            }
+                            Action::ListS3DataRecursiveForItem { item } => {
+                                state.set_s3_list_recursive_loading(true);
+                                let _ = self.state_tx.send(state.clone());
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                self.list_s3_data_recursive(item, s3_data_fetcher, s3_full_list_tx.clone()).await
+                            }
+                            Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
+                            Action::SelectS3Item { item} => {
+                                state.add_s3_selected_item(item);
+                                let _ = self.state_tx.send(state.clone());
+                            },
+                            Action::UnselectS3Item { item} => {
+                                state.remove_s3_selected_item(item);
+                                let _ = self.state_tx.send(state.clone());
+                            },
+                            Action::SelectLocalItem { item} => {
+                                state.add_local_selected_item(item);
+                                let _ = self.state_tx.send(state.clone());
+                            },
+                            Action::UnselectLocalItem { item } => {
+                                state.remove_local_selected_item(item);
+                                let _ = self.state_tx.send(state.clone());
+                            },
+                            Action::RunTransfers => {
+                                state.remove_already_transferred_items();
+                                let st = state.clone();
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&st);
+                                self.download_data(&s3_data_fetcher, st.s3_selected_items, selected_s3_transfers_tx.clone(), download_tx.clone()).await;
+                                self.upload_data(&s3_data_fetcher, st.local_selected_items, selected_local_transfers_tx.clone(), upload_tx.clone()).await;
+                            },
+                            Action::SelectCurrentS3Creds { item} => {
+                                state.set_current_s3_creds(item);
+                                let _ = self.state_tx.send(state.clone());
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                                 self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
-                            } else {
-                                self.fetch_s3_data(item.bucket, None, s3_data_fetcher, s3_tx.clone()).await;
+                            },
+                            Action::DeleteS3Item { item} => {
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                tracing::info!("deleting s3 item...{:?}", item.clone());
+                                self.delete_s3_data(item.clone(), s3_data_fetcher.clone(), s3_deleted_tx.clone()).await;
+                                if item.is_bucket {
+                                    self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
+                                } else {
+                                    self.fetch_s3_data(item.bucket, None, s3_data_fetcher, s3_tx.clone()).await;
+                                }
+                            },
+                            Action::DeleteLocalItem {item} => {
+                                state.remove_local_selected_item(item.clone());
+                                let _ = self.state_tx.send(state.clone());
+                                self.delete_local_data(item.clone(), local_data_fetcher.clone(), local_deleted_tx.clone()).await;
+                                self.fetch_local_data(Some(item.path.clone()), local_data_fetcher.clone(), local_tx.clone()).await;
+                            },
+                            Action::CreateBucket {name} => {
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                tracing::info!("creating s3 bucket...{:?}", name.clone());
+                                self.create_bucket(name.clone(), s3_data_fetcher.clone(), create_bucket_tx.clone()).await;
+                                self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
+                            },
+                            Action::ClearDeletionErrors => {
+                                state.s3_delete_state = None;
+                                state.local_delete_state = None;
+                                state.create_bucket_state = None;
+                                self.state_tx.send(state.clone())?;
                             }
                         },
-                        Action::DeleteLocalItem {item} => {
-                            state.remove_local_selected_item(item.clone());
-                            let _ = self.state_tx.send(state.clone());
-                            self.delete_local_data(item.clone(), local_data_fetcher.clone(), local_deleted_tx.clone()).await;
-                            self.fetch_local_data(Some(item.path.clone()), local_data_fetcher.clone(), local_tx.clone()).await;
-                        },
-                        Action::CreateBucket {name} => {
-                            let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                            tracing::info!("creating s3 bucket...{:?}", name.clone());
-                            self.create_bucket(name.clone(), s3_data_fetcher.clone(), create_bucket_tx.clone()).await;
-                            self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
-                        },
-                        Action::ClearDeletionErrors => {
-                            state.s3_delete_state = None;
-                            state.local_delete_state = None;
-                            state.create_bucket_state = None;
+                        Some(item) = selected_s3_transfers_rx.recv() => {
+                            state.update_selected_s3_transfers(item);
                             self.state_tx.send(state.clone())?;
-                        }   
-                    },
-                    Some(item) = selected_s3_transfers_rx.recv() => {
-                        state.update_selected_s3_transfers(item);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some(item) = selected_local_transfers_rx.recv() => {
-                        state.update_selected_local_transfers(item);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some((bucket, prefix, data)) = s3_rx.recv() => {
-                        state.update_buckets(bucket, prefix, data);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some((_bucket, _prefix, data)) = s3_full_list_rx.recv() => {
-                        state.update_s3_recursive_list(data);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some((path, files)) = local_rx.recv() => {
-                        state.update_files(path, files);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some(item) = upload_rx.recv() => {
-                        if state.active_page == ActivePage::Transfers {
-                            state.update_progress_on_selected_local_item(item);
+                        },
+                        Some(item) = selected_local_transfers_rx.recv() => {
+                            state.update_selected_local_transfers(item);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some((bucket, prefix, data)) = s3_rx.recv() => {
+                            state.update_buckets(bucket, prefix, data);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some((_bucket, _prefix, data)) = s3_full_list_rx.recv() => {
+                            state.update_s3_recursive_list(data);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some((path, files)) = local_rx.recv() => {
+                            state.update_files(path, files);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some(item) = upload_rx.recv() => {
+                            if state.active_page == ActivePage::Transfers {
+                                state.update_progress_on_selected_local_item(item);
+                                self.state_tx.send(state.clone())?;
+                            }
+                        },
+                        Some(item) = download_rx.recv() => {
+                            if state.active_page == ActivePage::Transfers {
+                                state.update_progress_on_selected_s3_item(item);
+                                self.state_tx.send(state.clone())?;
+                            }
+                        },
+                        Some(error_str) = local_deleted_rx.recv() => {
+                            state.set_local_delete_error(error_str);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some(error_str) = s3_deleted_rx.recv() => {
+                            state.set_s3_delete_error(error_str);
+                            self.state_tx.send(state.clone())?;
+                        },
+                        Some(error_str) = create_bucket_rx.recv() => {
+                            state.set_create_bucket_error(error_str);
                             self.state_tx.send(state.clone())?;
                         }
-                    },
-                    Some(item) = download_rx.recv() => {
-                        if state.active_page == ActivePage::Transfers {
-                            state.update_progress_on_selected_s3_item(item);
-                            self.state_tx.send(state.clone())?;
-                        }
-                    },
-                    Some(error_str) = local_deleted_rx.recv() => {
-                        state.set_local_delete_error(error_str);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some(error_str) = s3_deleted_rx.recv() => {
-                        state.set_s3_delete_error(error_str);
-                        self.state_tx.send(state.clone())?;
-                    },
-                    Some(error_str) = create_bucket_rx.recv() => {
-                        state.set_create_bucket_error(error_str);
-                        self.state_tx.send(state.clone())?;
-                    }
 
-            // Catch and handle interrupt signal to gracefully shutdown
-            Ok(interrupted) = interrupt_rx.recv() => {
-                break interrupted;
+                // Catch and handle interrupt signal to gracefully shutdown
+                Ok(interrupted) = interrupt_rx.recv() => {
+                    break interrupted;
+                }
             }
-        }
         };
 
         Ok(result)

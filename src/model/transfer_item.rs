@@ -19,7 +19,15 @@ pub struct TransferItem {
 impl TransferItem {
     pub fn to_columns(&self) -> Vec<String> {
         let progress = format!("{:.2}%", self.progress);
-        vec![self.direction.clone(), self.bucket.clone(), self.name.clone(), self.destination_dir.clone(), self.s3_creds.name.clone(), progress, self.error.clone().unwrap_or("".to_string())]
+        vec![
+            self.direction.clone(),
+            self.bucket.clone(),
+            self.name.clone(),
+            self.destination_dir.clone(),
+            self.s3_creds.name.clone(),
+            progress,
+            self.error.clone().unwrap_or("".to_string()),
+        ]
     }
 
     pub fn from_s3_selected_item(item: S3SelectedItem) -> TransferItem {
@@ -51,12 +59,11 @@ impl TransferItem {
     }
 }
 
-
 impl PartialEq for TransferItem {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name &&
-            self.bucket == other.bucket &&
-            self.path == other.path &&
-            self.destination_dir == other.destination_dir
+        self.name == other.name
+            && self.bucket == other.bucket
+            && self.path == other.path
+            && self.destination_dir == other.destination_dir
     }
 }

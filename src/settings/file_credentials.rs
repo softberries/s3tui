@@ -1,8 +1,8 @@
+use crate::utils::get_data_dir;
+use color_eyre::{eyre, Report};
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::Path;
-use color_eyre::{eyre, Report};
-use crate::utils::get_data_dir;
 
 /// Representation of the credentials stored in your configuration
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -67,7 +67,10 @@ fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> 
     }
 
     if access_key.is_empty() || secret_key.is_empty() || default_region.is_empty() {
-        panic!("Missing access_key/secret_key/default_region in file: {:?}", path);
+        panic!(
+            "Missing access_key/secret_key/default_region in file: {:?}",
+            path
+        );
     }
 
     Ok((access_key, secret_key, default_region))
@@ -105,7 +108,10 @@ mod tests {
     fn test_load_credentials_no_files() {
         let dir = tempdir().unwrap();
         let res = load_credentials_from_dir(dir.path());
-        assert_eq!(res.err().unwrap().to_string(), Report::msg("Missing credentials in your data creds folder").to_string());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            Report::msg("Missing credentials in your data creds folder").to_string()
+        );
     }
 
     #[test]
@@ -134,8 +140,6 @@ mod tests {
     }
 
     fn count_selected_credentials(credentials: &[FileCredential]) -> usize {
-        credentials.iter()
-            .filter(|cred| cred.selected)
-            .count()
+        credentials.iter().filter(|cred| cred.selected).count()
     }
 }

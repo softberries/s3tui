@@ -1,10 +1,10 @@
+use crate::components::component::{Component, ComponentRender};
+use crate::model::action::Action;
+use crate::model::state::{ActivePage, State};
+use crate::settings::file_credentials::FileCredential;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
-use crate::model::action::Action;
-use crate::components::component::{Component, ComponentRender};
-use crate::model::state::{ActivePage, State};
-use crate::settings::file_credentials::FileCredential;
 
 #[derive(Clone)]
 struct Props {
@@ -32,20 +32,20 @@ pub struct S3CredsPage {
 
 impl Component for S3CredsPage {
     fn new(state: &State, action_tx: UnboundedSender<Action>) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         S3CredsPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
         }
-            .move_with_state(state)
+        .move_with_state(state)
     }
 
     fn move_with_state(self, state: &State) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         let new_props = Props::from(state);
         S3CredsPage {
@@ -66,23 +66,21 @@ impl Component for S3CredsPage {
             return;
         }
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.move_down_creds_table_selection()
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.move_up_creds_table_selection()
-            }
-            KeyCode::Enter => {
-                self.set_current_s3_account()
-            }
+            KeyCode::Char('j') | KeyCode::Down => self.move_down_creds_table_selection(),
+            KeyCode::Char('k') | KeyCode::Up => self.move_up_creds_table_selection(),
+            KeyCode::Enter => self.set_current_s3_account(),
             KeyCode::Char('q') => {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::Help });
+                let _ = self.action_tx.send(Action::Navigate {
+                    page: ActivePage::Help,
+                });
             }
             KeyCode::Esc => {
-                let _ = self.action_tx.send(Action::Navigate { page: ActivePage::FileManager });
+                let _ = self.action_tx.send(Action::Navigate {
+                    page: ActivePage::FileManager,
+                });
             }
             _ => {}
         }
@@ -100,15 +98,38 @@ impl S3CredsPage {
 
     fn get_s3_table(&self) -> Table {
         let focus_color = Color::Rgb(98, 114, 164);
-        let header =
-            Row::new(vec!["Account Name"]).bold().underlined().height(1).bottom_margin(0);
-        let rows = self.props.creds_data.iter().map(|item| S3CredsPage::get_s3_row(self, item));
-        let widths = [Constraint::Length(10), Constraint::Length(35), Constraint::Length(35), Constraint::Length(10), Constraint::Length(10)];
+        let header = Row::new(vec!["Account Name"])
+            .bold()
+            .underlined()
+            .height(1)
+            .bottom_margin(0);
+        let rows = self
+            .props
+            .creds_data
+            .iter()
+            .map(|item| S3CredsPage::get_s3_row(self, item));
+        let widths = [
+            Constraint::Length(10),
+            Constraint::Length(35),
+            Constraint::Length(35),
+            Constraint::Length(10),
+            Constraint::Length(10),
+        ];
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Account list"))
-            .highlight_style(Style::default().fg(focus_color).add_modifier(Modifier::REVERSED))
-            .widths([Constraint::Percentage(10), Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(10), Constraint::Percentage(10)]);
+            .highlight_style(
+                Style::default()
+                    .fg(focus_color)
+                    .add_modifier(Modifier::REVERSED),
+            )
+            .widths([
+                Constraint::Percentage(10),
+                Constraint::Percentage(35),
+                Constraint::Percentage(35),
+                Constraint::Percentage(10),
+                Constraint::Percentage(10),
+            ]);
         table
     }
 
@@ -147,13 +168,16 @@ impl S3CredsPage {
     }
 
     pub fn set_current_s3_account(&mut self) {
-        if let Some(selected_row) =
-            self.props.creds_table_state.selected().and_then(|index| self.props.creds_data.get(index))
+        if let Some(selected_row) = self
+            .props
+            .creds_table_state
+            .selected()
+            .and_then(|index| self.props.creds_data.get(index))
         {
             let sr = selected_row.clone();
-            let _ = self.action_tx.send(Action::SelectCurrentS3Creds {
-                item: sr.clone()
-            });
+            let _ = self
+                .action_tx
+                .send(Action::SelectCurrentS3Creds { item: sr.clone() });
         }
     }
 }
@@ -161,14 +185,18 @@ impl S3CredsPage {
 impl ComponentRender<()> for S3CredsPage {
     fn render(&self, frame: &mut Frame, _props: ()) {
         let s3_table = self.get_s3_table();
-        frame.render_stateful_widget(&s3_table, frame.size(), &mut self.props.clone().creds_table_state)
+        frame.render_stateful_widget(
+            &s3_table,
+            frame.size(),
+            &mut self.props.clone().creds_table_state,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crossterm::event::KeyModifiers;
     use super::*;
+    use crossterm::event::KeyModifiers;
     use tokio::sync::mpsc::unbounded_channel;
 
     #[tokio::test]
@@ -206,11 +234,21 @@ mod tests {
 
         // Simulate pressing '?'
         component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
-        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::Help });
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Navigate {
+                page: ActivePage::Help
+            }
+        );
 
         // Simulate pressing 'Esc'
         component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
-        assert_eq!(rx.recv().await.unwrap(), Action::Navigate { page: ActivePage::FileManager });
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            Action::Navigate {
+                page: ActivePage::FileManager
+            }
+        );
     }
 
     #[test]

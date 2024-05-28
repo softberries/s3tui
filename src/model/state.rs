@@ -1,13 +1,13 @@
 //! This module provides functionality for keeping the application state
-use url::Url;
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
-use crate::model::upload_progress_item::UploadProgressItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::upload_progress_item::UploadProgressItem;
 use crate::settings::file_credentials::FileCredential;
 use percent_encoding::percent_decode;
+use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum ActivePage {
@@ -18,7 +18,7 @@ pub enum ActivePage {
     Help,
 }
 
-/// Represents entire state of the application, each page transforms this information for 
+/// Represents entire state of the application, each page transforms this information for
 /// suitable Props object
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -117,15 +117,16 @@ impl State {
     }
 
     pub fn remove_already_transferred_items(&mut self) {
-        self.s3_selected_items.retain(|it|
-            !it.transferred
-        );
-        self.local_selected_items.retain(|it|
-            !it.transferred
-        );
+        self.s3_selected_items.retain(|it| !it.transferred);
+        self.local_selected_items.retain(|it| !it.transferred);
     }
 
-    pub fn update_buckets(&mut self, bucket: Option<String>, prefix: Option<String>, bucket_list: Vec<S3DataItem>) {
+    pub fn update_buckets(
+        &mut self,
+        bucket: Option<String>,
+        prefix: Option<String>,
+        bucket_list: Vec<S3DataItem>,
+    ) {
         self.s3_data = bucket_list;
         self.s3_loading = false;
         self.current_s3_bucket = bucket;
@@ -184,18 +185,13 @@ impl State {
     }
 
     pub fn remove_s3_selected_item(&mut self, item: S3SelectedItem) {
-        self.s3_selected_items.retain(|it|
-            it.bucket != item.bucket ||
-                it.name != item.name ||
-                it.path != item.path
-        );
+        self.s3_selected_items
+            .retain(|it| it.bucket != item.bucket || it.name != item.name || it.path != item.path);
     }
 
     pub fn remove_local_selected_item(&mut self, item: LocalSelectedItem) {
-        self.local_selected_items.retain(|it|
-            it.name != item.name ||
-                it.path != item.path
-        );
+        self.local_selected_items
+            .retain(|it| it.name != item.name || it.path != item.path);
     }
 
     pub fn set_current_s3_creds(&mut self, item: FileCredential) {
@@ -213,13 +209,20 @@ impl State {
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
      */
-    fn update_local_item_with_progress(&mut self, selected_items: Vec<LocalSelectedItem>, progress_item: UploadProgressItem) {
+    fn update_local_item_with_progress(
+        &mut self,
+        selected_items: Vec<LocalSelectedItem>,
+        progress_item: UploadProgressItem,
+    ) {
         let url = match Url::parse(progress_item.uri.as_str()) {
             Ok(url) => url,
             Err(_) => return, // Exit the function if URL parsing fails
         };
         let host = url.host_str().unwrap_or_default();
-        let path_segments = url.path_segments().map(|c| c.collect::<Vec<_>>()).unwrap_or_default();
+        let path_segments = url
+            .path_segments()
+            .map(|c| c.collect::<Vec<_>>())
+            .unwrap_or_default();
         let name = path_segments.last().unwrap_or(&"");
 
         // Assume bucket name is the first segment of the host
@@ -265,11 +268,17 @@ impl State {
         self.local_selected_items = mutated_items;
     }
 
-    fn update_s3_item_with_progress(&mut self, selected_items: Vec<S3SelectedItem>, progress_item: DownloadProgressItem) {
+    fn update_s3_item_with_progress(
+        &mut self,
+        selected_items: Vec<S3SelectedItem>,
+        progress_item: DownloadProgressItem,
+    ) {
         let mut mutated_items: Vec<S3SelectedItem> = Vec::new();
         for item in selected_items.clone().iter_mut() {
             if item.children.is_none() {
-                if item.name == progress_item.name && item.bucket == Some(progress_item.bucket.clone()) {
+                if item.name == progress_item.name
+                    && item.bucket == Some(progress_item.bucket.clone())
+                {
                     item.progress = progress_item.progress;
                     mutated_items.push(item.clone());
                 } else {
@@ -279,7 +288,9 @@ impl State {
                 let mut mutated_children: Vec<S3SelectedItem> = Vec::new();
                 if let Some(mut children) = item.clone().children {
                     for child in children.iter_mut() {
-                        if child.name == progress_item.name && child.bucket == Some(progress_item.bucket.clone()) {
+                        if child.name == progress_item.name
+                            && child.bucket == Some(progress_item.bucket.clone())
+                        {
                             child.progress = progress_item.progress;
                             mutated_children.push(child.clone());
                         } else {
@@ -297,7 +308,13 @@ impl State {
     }
 
     fn calculate_overall_progress_s3(items: Vec<S3SelectedItem>) -> f64 {
-        let all_progress: f64 = items.clone().into_iter().map(|i| i.progress).collect::<Vec<_>>().into_iter().sum();
+        let all_progress: f64 = items
+            .clone()
+            .into_iter()
+            .map(|i| i.progress)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .sum();
         if all_progress > 0.0 {
             all_progress / items.len() as f64
         } else {
@@ -305,7 +322,13 @@ impl State {
         }
     }
     fn calculate_overall_progress_local(items: Vec<LocalSelectedItem>) -> f64 {
-        let all_progress: f64 = items.clone().into_iter().map(|i| i.progress).collect::<Vec<_>>().into_iter().sum();
+        let all_progress: f64 = items
+            .clone()
+            .into_iter()
+            .map(|i| i.progress)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .sum();
         if all_progress > 0.0 {
             all_progress / items.len() as f64
         } else {
@@ -342,8 +365,20 @@ mod tests {
     #[test]
     fn new_state_with_selected_credential_sets_current_creds_correctly() {
         let creds = vec![
-            FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: true },
+            FileCredential {
+                name: "AWS".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: false,
+            },
+            FileCredential {
+                name: "Azure".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: true,
+            },
         ];
         let state = State::new(creds.clone());
         assert_eq!(state.current_creds, creds[1]);
@@ -352,8 +387,20 @@ mod tests {
     #[test]
     fn new_state_without_selected_credential_sets_current_creds_correctly() {
         let creds = vec![
-            FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
+            FileCredential {
+                name: "AWS".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: false,
+            },
+            FileCredential {
+                name: "Azure".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: false,
+            },
         ];
         let state = State::new(creds.clone());
         assert_eq!(state.current_creds, state.current_creds);
@@ -362,8 +409,20 @@ mod tests {
     #[test]
     fn set_current_s3_creds_set_creds_correctly_for_existing_state() {
         let creds = vec![
-            FileCredential { name: "AWS".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: true },
-            FileCredential { name: "Azure".into(), access_key: "".to_string(), secret_key: "".to_string(), default_region: "".to_string(), selected: false },
+            FileCredential {
+                name: "AWS".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: true,
+            },
+            FileCredential {
+                name: "Azure".into(),
+                access_key: "".to_string(),
+                secret_key: "".to_string(),
+                default_region: "".to_string(),
+                selected: false,
+            },
         ];
         let mut state = State::new(creds.clone());
         assert_eq!(state.current_creds, creds[0]);
@@ -474,7 +533,10 @@ mod tests {
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(child.clone());
-        let children = state.s3_selected_items[0].clone().children.unwrap_or_default();
+        let children = state.s3_selected_items[0]
+            .clone()
+            .children
+            .unwrap_or_default();
         assert_eq!(children.len(), 1);
         // assert!(children[0].transferred);
         // assert_eq!(children[0].progress, 100f64);
@@ -722,7 +784,14 @@ mod tests {
             uri: "https://test-bucket.s3.eu-west-1.amazonaws.com/file1.txt?x-id=PutObject".into(),
         };
         state.update_local_item_with_progress(state.local_selected_items.clone(), progress_item);
-        assert_eq!(state.local_selected_items[0].clone().children.unwrap_or_default()[0].progress, 50.0);
+        assert_eq!(
+            state.local_selected_items[0]
+                .clone()
+                .children
+                .unwrap_or_default()[0]
+                .progress,
+            50.0
+        );
         assert_eq!(state.local_selected_items[0].progress, 50.0);
     }
 
@@ -788,7 +857,14 @@ mod tests {
             name: "file1.txt".into(),
         };
         state.update_s3_item_with_progress(state.s3_selected_items.clone(), progress_item);
-        assert_eq!(state.s3_selected_items[0].clone().children.unwrap_or_default()[0].progress, 50.0);
+        assert_eq!(
+            state.s3_selected_items[0]
+                .clone()
+                .children
+                .unwrap_or_default()[0]
+                .progress,
+            50.0
+        );
         assert_eq!(state.s3_selected_items[0].progress, 50.0);
     }
 }

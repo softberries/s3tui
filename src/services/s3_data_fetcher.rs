@@ -1,27 +1,33 @@
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path};
-use aws_sdk_s3::config::{Credentials, Region};
-use tokio::sync::mpsc::UnboundedSender;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::{BucketInfo, FileInfo, S3DataItem};
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
+use aws_sdk_s3::config::{Credentials, Region};
 use aws_smithy_runtime_api::http::Request;
-use std::{convert::Infallible, fs, path::PathBuf, pin::Pin, task::{Context, Poll}};
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use std::{
+    convert::Infallible,
+    fs,
+    path::PathBuf,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tokio::sync::mpsc::UnboundedSender;
 
+use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::upload_progress_item::UploadProgressItem;
 use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
 use aws_sdk_s3::{
     primitives::{ByteStream, SdkBody},
     Client,
 };
-use aws_sdk_s3::types::{BucketLocationConstraint, CreateBucketConfiguration};
 use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use bytes::Bytes;
 use color_eyre::{eyre, Report};
 use http_body::{Body, SizeHint};
-use crate::model::download_progress_item::DownloadProgressItem;
-use crate::model::upload_progress_item::UploadProgressItem;
 
 /// Handles interactions with the s3 services through AWS sdk
 #[derive(Clone)]
@@ -65,7 +71,10 @@ impl ProgressBody<SdkBody> {
     // swap out the current body for a fresh, empty body and then provides ::from_dyn()
     // to get an SdkBody back from the ProgressBody it created. http::Body does not have
     // this "change the wheels on the fly" utility.
-    pub fn replace(value: Request<SdkBody>, tx: UnboundedSender<UploadProgressItem>) -> Result<Request<SdkBody>, Infallible> {
+    pub fn replace(
+        value: Request<SdkBody>,
+        tx: UnboundedSender<UploadProgressItem>,
+    ) -> Result<Request<SdkBody>, Infallible> {
         let uri = value.uri().to_string();
         let value = value.map(|body| {
             let len = body.content_length().expect("upload body sized");
@@ -78,10 +87,15 @@ impl ProgressBody<SdkBody> {
 }
 
 impl<InnerBody> ProgressBody<InnerBody>
-    where
-        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
+where
+    InnerBody: Body<Data = Bytes, Error = aws_smithy_types::body::Error>,
 {
-    pub fn new(body: InnerBody, content_length: u64, uri: String, tx: UnboundedSender<UploadProgressItem>) -> Self {
+    pub fn new(
+        body: InnerBody,
+        content_length: u64,
+        uri: String,
+        tx: UnboundedSender<UploadProgressItem>,
+    ) -> Self {
         Self {
             inner: body,
             progress_tracker: ProgressTracker {
@@ -95,8 +109,8 @@ impl<InnerBody> ProgressBody<InnerBody>
 }
 
 impl<InnerBody> Body for ProgressBody<InnerBody>
-    where
-        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
+where
+    InnerBody: Body<Data = Bytes, Error = aws_smithy_types::body::Error>,
 {
     type Data = Bytes;
 
@@ -150,11 +164,14 @@ impl S3DataFetcher {
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
-            None, // Token, if using temporary credentials (like STS)
-            None, // Expiry time, if applicable
+            None,     // Token, if using temporary credentials (like STS)
+            None,     // Expiry time, if applicable
             "manual", // Source, just a label for debugging
         );
-        S3DataFetcher { default_region, credentials }
+        S3DataFetcher {
+            default_region,
+            credentials,
+        }
     }
 
     /*
@@ -162,7 +179,11 @@ impl S3DataFetcher {
     - not sure when and if necessary to use multipart uploads,
     - no directory handling
      */
-    pub async fn upload_item(&self, item: LocalSelectedItem, upload_tx: UnboundedSender<UploadProgressItem>) -> eyre::Result<bool> {
+    pub async fn upload_item(
+        &self,
+        item: LocalSelectedItem,
+        upload_tx: UnboundedSender<UploadProgressItem>,
+    ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
             .path(item.path)
@@ -176,8 +197,8 @@ impl S3DataFetcher {
             item.name
         } else {
             item.destination_path
-        };//Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
-        //destination_path
+        }; //Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
+           //destination_path
         let request = client
             .put_object()
             .bucket(item.destination_bucket)
@@ -189,9 +210,7 @@ impl S3DataFetcher {
             .map_request(move |req| ProgressBody::<SdkBody>::replace(req, upload_tx.clone()));
 
         match customized.send().await {
-            Ok(_a) => {
-                Ok(true)
-            }
+            Ok(_a) => Ok(true),
             Err(e) => {
                 tracing::error!("Upload SdkError: {:?}", e);
                 Err(Report::msg(e.into_service_error().to_string()))
@@ -212,7 +231,11 @@ impl S3DataFetcher {
     this function handles only simple files as of now.
     - no directory or full bucket handling
     */
-    pub async fn download_item(&self, item: S3SelectedItem, download_tx: UnboundedSender<DownloadProgressItem>) -> eyre::Result<bool> {
+    pub async fn download_item(
+        &self,
+        item: S3SelectedItem,
+        download_tx: UnboundedSender<DownloadProgressItem>,
+    ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
         path.push(item.name.clone());
@@ -230,7 +253,8 @@ impl S3DataFetcher {
             .bucket(bucket.clone())
             .key(item.name.clone())
             .send()
-            .await {
+            .await
+        {
             Ok(mut object) => {
                 let mut byte_count = 0_usize;
                 let total = head_obj.content_length.unwrap_or(0i64);
@@ -263,12 +287,16 @@ impl S3DataFetcher {
         }
     }
 
-    pub async fn list_current_location(&self, bucket: Option<String>, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
+    pub async fn list_current_location(
+        &self,
+        bucket: Option<String>,
+        prefix: Option<String>,
+    ) -> eyre::Result<Vec<S3DataItem>> {
         match (bucket, prefix) {
             (None, None) => self.list_buckets().await,
             (Some(bucket), None) => self.list_objects(bucket.as_str(), None).await,
             (Some(bucket), Some(prefix)) => self.list_objects(bucket.as_str(), Some(prefix)).await,
-            _ => self.list_buckets().await
+            _ => self.list_buckets().await,
         }
     }
 
@@ -276,7 +304,10 @@ impl S3DataFetcher {
         let default_region = self.default_region.clone();
         let client = self.get_s3_client(None).await;
         let head_obj = client.get_bucket_location().bucket(bucket).send().await?;
-        let location = head_obj.location_constraint().map(|lc| lc.to_string()).unwrap_or_else(|| default_region.to_string());
+        let location = head_obj
+            .location_constraint()
+            .map(|lc| lc.to_string())
+            .unwrap_or_else(|| default_region.to_string());
         Ok(location)
     }
 
@@ -288,56 +319,83 @@ impl S3DataFetcher {
             fetched_data = res.buckets.as_ref().map_or_else(
                 Vec::new, // In case there is no buckets field (it's None), return an empty Vec
                 |buckets| {
-                    buckets.iter().filter_map(|bucket| {
-                        // Filter out buckets where name is None, and map those with a name to a Vec<String>
-                        bucket.name.as_ref().map(|name| {
-                            let file_info = FileInfo {
-                                file_name: name.clone(),
-                                size: "".to_string(),
-                                file_type: "Bucket".to_string(),
-                                path: name.clone(),
-                                is_directory: false,
-                            };
-                            let bucket_info = BucketInfo {
-                                bucket: None,
-                                region: None,
-                                is_bucket: true,
-                            };
-                            S3DataItem::init(bucket_info, file_info)
+                    buckets
+                        .iter()
+                        .filter_map(|bucket| {
+                            // Filter out buckets where name is None, and map those with a name to a Vec<String>
+                            bucket.name.as_ref().map(|name| {
+                                let file_info = FileInfo {
+                                    file_name: name.clone(),
+                                    size: "".to_string(),
+                                    file_type: "Bucket".to_string(),
+                                    path: name.clone(),
+                                    is_directory: false,
+                                };
+                                let bucket_info = BucketInfo {
+                                    bucket: None,
+                                    region: None,
+                                    is_bucket: true,
+                                };
+                                S3DataItem::init(bucket_info, file_info)
+                            })
                         })
-                    }).collect()
+                        .collect()
                 },
             )
         }
         Ok(fetched_data)
     }
 
-    pub async fn create_bucket(&self, name: String, region: String) -> eyre::Result<Option<String>> {
+    pub async fn create_bucket(
+        &self,
+        name: String,
+        region: String,
+    ) -> eyre::Result<Option<String>> {
         let client = self.get_s3_client(None).await;
         let constraint = BucketLocationConstraint::from(region.as_str());
         let cfg = CreateBucketConfiguration::builder()
             .location_constraint(constraint)
             .build();
-        match client.create_bucket()
+        match client
+            .create_bucket()
             .create_bucket_configuration(cfg)
             .bucket(name.clone())
-            .send().await {
+            .send()
+            .await
+        {
             Ok(_) => {
                 tracing::info!("Bucket created");
                 Ok(None)
             }
             Err(e) => {
                 tracing::error!("Cannot create bucket");
-                Ok(Some(e.into_service_error().message().unwrap_or("Cannot create bucket").to_string()))
+                Ok(Some(
+                    e.into_service_error()
+                        .message()
+                        .unwrap_or("Cannot create bucket")
+                        .to_string(),
+                ))
             }
         }
     }
 
-    pub async fn delete_data(&self, is_bucket: bool, bucket: Option<String>, name: String, _is_directory: bool) -> eyre::Result<Option<String>> {
+    pub async fn delete_data(
+        &self,
+        is_bucket: bool,
+        bucket: Option<String>,
+        name: String,
+        _is_directory: bool,
+    ) -> eyre::Result<Option<String>> {
         if is_bucket {
             let location = self.get_bucket_location(&name).await?;
             let creds = self.credentials.clone();
-            let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone(), selected: false };
+            let temp_file_creds = FileCredential {
+                name: "temp".to_string(),
+                access_key: creds.access_key_id().to_string(),
+                secret_key: creds.secret_access_key().to_string(),
+                default_region: location.clone(),
+                selected: false,
+            };
             let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
             let response = client_with_location
                 .delete_bucket()
@@ -351,18 +409,19 @@ impl S3DataFetcher {
                 }
                 Err(e) => {
                     tracing::error!("error deleting bucket: {}, {:?}", name, e);
-                    Ok(Some(e.into_service_error().message().unwrap_or("Error deleting bucket").to_string()))
+                    Ok(Some(
+                        e.into_service_error()
+                            .message()
+                            .unwrap_or("Error deleting bucket")
+                            .to_string(),
+                    ))
                 }
             }
         } else {
             tracing::info!("Deleting object: {:?}, {:?}", name, bucket);
             match bucket {
-                Some(b) => {
-                    self.delete_single_item(&b, &name).await
-                }
-                None => {
-                    Ok(Some("No bucket specified!".into()))
-                }
+                Some(b) => self.delete_single_item(&b, &name).await,
+                None => Ok(Some("No bucket specified!".into())),
             }
         }
     }
@@ -370,7 +429,13 @@ impl S3DataFetcher {
     async fn delete_single_item(&self, bucket: &str, name: &str) -> eyre::Result<Option<String>> {
         let location = self.get_bucket_location(bucket).await?;
         let creds = self.credentials.clone();
-        let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone(), selected: false };
+        let temp_file_creds = FileCredential {
+            name: "temp".to_string(),
+            access_key: creds.access_key_id().to_string(),
+            secret_key: creds.secret_access_key().to_string(),
+            default_region: location.clone(),
+            selected: false,
+        };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
         let response = client_with_location
             .delete_object()
@@ -384,8 +449,16 @@ impl S3DataFetcher {
                 Ok(None)
             }
             Err(e) => {
-                tracing::error!("Cannot delete object, bucket: {:?}, name: {:?}, error: {:?}", bucket, name, e);
-                Ok(Some(format!("Cannot delete object, {:?}", e.into_service_error().message().unwrap_or(""))))
+                tracing::error!(
+                    "Cannot delete object, bucket: {:?}, name: {:?}, error: {:?}",
+                    bucket,
+                    name,
+                    e
+                );
+                Ok(Some(format!(
+                    "Cannot delete object, {:?}",
+                    e.into_service_error().message().unwrap_or("")
+                )))
             }
         }
     }
@@ -394,11 +467,21 @@ impl S3DataFetcher {
     /// representing directories
     /// This method is used for displaying bucket/prefix content while browsing s3 and
     /// it's not fetching all the contents behind prefixes together
-    async fn list_objects(&self, bucket: &str, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
+    async fn list_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<String>,
+    ) -> eyre::Result<Vec<S3DataItem>> {
         let mut all_objects = Vec::new();
         let location = self.get_bucket_location(bucket).await?;
         let creds = self.credentials.clone();
-        let temp_file_creds = FileCredential { name: "temp".to_string(), access_key: creds.access_key_id().to_string(), secret_key: creds.secret_access_key().to_string(), default_region: location.clone(), selected: false };
+        let temp_file_creds = FileCredential {
+            name: "temp".to_string(),
+            access_key: creds.access_key_id().to_string(),
+            secret_key: creds.secret_access_key().to_string(),
+            default_region: location.clone(),
+            selected: false,
+        };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
         let mut response = client_with_location
             .list_objects_v2()
@@ -414,9 +497,12 @@ impl S3DataFetcher {
                     for object in output.contents() {
                         let key = object.key().unwrap_or_default();
                         //todo: get size of the file
-                        let size = object.size().map_or(String::new(), |value| value.to_string());
+                        let size = object
+                            .size()
+                            .map_or(String::new(), |value| value.to_string());
                         let path = Path::new(key);
-                        let file_extension = path.extension()
+                        let file_extension = path
+                            .extension()
                             .and_then(|ext| ext.to_str()) // Convert the OsStr to a &str
                             .unwrap_or("");
                         let file_info = FileInfo {
@@ -462,10 +548,15 @@ impl S3DataFetcher {
     /// This method is similar to `list_objects` but it fetches all the data recursively
     /// including data behind the prefixes.
     /// Designed to be used mainly when selecting whole bucket/prefix for download or delete.
-    pub async fn list_all_objects(&self, bucket: &str, prefix: Option<String>) -> eyre::Result<Vec<S3DataItem>> {
+    pub async fn list_all_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<String>,
+    ) -> eyre::Result<Vec<S3DataItem>> {
         let mut all_objects = Vec::new();
         let location = self.get_bucket_location(bucket).await?;
-        self.recursive_list_objects(bucket, prefix, &location, &mut all_objects).await?;
+        self.recursive_list_objects(bucket, prefix, &location, &mut all_objects)
+            .await?;
         Ok(all_objects)
     }
     fn recursive_list_objects<'a>(
@@ -474,7 +565,7 @@ impl S3DataFetcher {
         prefix: Option<String>,
         location: &'a str,
         all_objects: &'a mut Vec<S3DataItem>,
-    ) -> Pin<Box<dyn std::future::Future<Output=Result<(), Report>> + Send + 'a>> {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Report>> + Send + 'a>> {
         Box::pin(async move {
             let creds = self.credentials.clone();
             let temp_file_creds = FileCredential {
@@ -499,11 +590,12 @@ impl S3DataFetcher {
                     Ok(output) => {
                         for object in output.contents() {
                             let key = object.key().unwrap_or_default();
-                            let size = object.size().map_or(String::new(), |value| value.to_string());
+                            let size = object
+                                .size()
+                                .map_or(String::new(), |value| value.to_string());
                             let path = Path::new(key);
-                            let file_extension = path.extension()
-                                .and_then(|ext| ext.to_str())
-                                .unwrap_or("");
+                            let file_extension =
+                                path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
                             let file_info = FileInfo {
                                 file_name: key.to_string(),
                                 size,
@@ -520,7 +612,13 @@ impl S3DataFetcher {
                         }
                         for common_prefix in output.common_prefixes() {
                             let prefix = common_prefix.prefix().unwrap_or_default().to_string();
-                            self.recursive_list_objects(bucket, Some(prefix), location, all_objects).await?;
+                            self.recursive_list_objects(
+                                bucket,
+                                Some(prefix),
+                                location,
+                                all_objects,
+                            )
+                            .await?;
                         }
                     }
                     Err(err) => {
@@ -543,8 +641,8 @@ impl S3DataFetcher {
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
-                None, // Token, if using temporary credentials (like STS)
-                None, // Expiry time, if applicable
+                None,     // Token, if using temporary credentials (like STS)
+                None,     // Expiry time, if applicable
                 "manual", // Source, just a label for debugging
             );
         } else {
@@ -554,7 +652,11 @@ impl S3DataFetcher {
         let region_provider = RegionProviderChain::first_try(Region::new(default_region))
             .or_default_provider()
             .or_else(Region::new("eu-north-1"));
-        let shared_config = aws_config::from_env().credentials_provider(credentials).region(region_provider).load().await;
+        let shared_config = aws_config::from_env()
+            .credentials_provider(credentials)
+            .region(region_provider)
+            .load()
+            .await;
         Client::new(&shared_config)
     }
 }

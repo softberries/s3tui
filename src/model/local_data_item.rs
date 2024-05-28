@@ -9,11 +9,13 @@ pub struct LocalDataItem {
 }
 
 impl LocalDataItem {
-    pub fn init(file_name: String,
-                size: String,
-                file_type: &str,
-                path: &str,
-                is_directory: bool) -> LocalDataItem {
+    pub fn init(
+        file_name: String,
+        size: String,
+        file_type: &str,
+        path: &str,
+        is_directory: bool,
+    ) -> LocalDataItem {
         LocalDataItem {
             name: file_name,
             size,
@@ -26,7 +28,6 @@ impl LocalDataItem {
         vec![self.name.clone(), self.size.clone(), self.file_type.clone()]
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -41,7 +42,8 @@ mod tests {
             path: "/some/path".into(),
             is_directory: false,
         };
-        let local_data_item = LocalDataItem::init("name".into(), "1 MB".into(), "txt", "/some/path", false);
+        let local_data_item =
+            LocalDataItem::init("name".into(), "1 MB".into(), "txt", "/some/path", false);
         assert_eq!(local_data_item.name, item.name);
         assert_eq!(local_data_item.size, item.size);
         assert_eq!(local_data_item.is_directory, item.is_directory);
