@@ -25,7 +25,7 @@ impl S3SelectedItem {
     ) -> S3SelectedItem {
         S3SelectedItem {
             bucket: item.bucket,
-            name: item.name,
+            name: item.name.clone(),
             path: Some(item.path),
             is_directory: item.is_directory,
             is_bucket: item.is_bucket,

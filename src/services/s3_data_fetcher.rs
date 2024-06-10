@@ -87,8 +87,8 @@ impl ProgressBody<SdkBody> {
 }
 
 impl<InnerBody> ProgressBody<InnerBody>
-where
-    InnerBody: Body<Data = Bytes, Error = aws_smithy_types::body::Error>,
+    where
+        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
 {
     pub fn new(
         body: InnerBody,
@@ -109,8 +109,8 @@ where
 }
 
 impl<InnerBody> Body for ProgressBody<InnerBody>
-where
-    InnerBody: Body<Data = Bytes, Error = aws_smithy_types::body::Error>,
+    where
+        InnerBody: Body<Data=Bytes, Error=aws_smithy_types::body::Error>,
 {
     type Data = Bytes;
 
@@ -198,7 +198,7 @@ impl S3DataFetcher {
         } else {
             item.destination_path
         }; //Self::combine_paths(Path::new(&item.destination_path), Path::new(&item.name));
-           //destination_path
+        //destination_path
         let request = client
             .put_object()
             .bucket(item.destination_bucket)
@@ -238,20 +238,20 @@ impl S3DataFetcher {
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
-        path.push(item.name.clone());
+        path.push(item.path.clone().unwrap_or(item.name.clone()));
         self.create_directory_structure(&path)?;
         let mut file = File::create(&path)?;
         let bucket = item.bucket.expect("bucket must be defined").clone();
         let head_obj = client
             .head_object()
             .bucket(bucket.clone())
-            .key(item.name.clone())
+            .key(item.path.clone().unwrap_or(item.name.clone()))
             .send()
             .await?;
         match client
             .get_object()
             .bucket(bucket.clone())
-            .key(item.name.clone())
+            .key(item.path.clone().unwrap_or(item.name.clone()))
             .send()
             .await
         {
@@ -264,7 +264,7 @@ impl S3DataFetcher {
                     byte_count += bytes_len;
                     let progress = Self::calculate_download_percentage(total, byte_count);
                     let download_progress_item = DownloadProgressItem {
-                        name: item.name.clone(),
+                        name: item.path.clone().unwrap_or(item.name.clone())    ,
                         bucket: bucket.clone(),
                         progress,
                     };
@@ -506,10 +506,10 @@ impl S3DataFetcher {
                             .and_then(|ext| ext.to_str()) // Convert the OsStr to a &str
                             .unwrap_or("");
                         let file_info = FileInfo {
-                            file_name: key.to_string(),
+                            file_name: Self::get_filename(key).unwrap_or_default(),
                             size,
                             file_type: file_extension.to_string(),
-                            path: "".to_string(),
+                            path: key.to_string(),
                             is_directory: false,
                         };
                         let bucket_info = BucketInfo {
@@ -521,19 +521,21 @@ impl S3DataFetcher {
                     }
                     for object in output.common_prefixes() {
                         let key = object.prefix().unwrap_or_default();
-                        let file_info = FileInfo {
-                            file_name: key.to_string(),
-                            size: "".to_string(),
-                            file_type: "Dir".to_string(),
-                            path: key.to_string(),
-                            is_directory: true,
-                        };
-                        let bucket_info = BucketInfo {
-                            bucket: Some(bucket.to_string()),
-                            region: Some(location.clone()),
-                            is_bucket: false,
-                        };
-                        all_objects.push(S3DataItem::init(bucket_info, file_info));
+                        if key != "/" {
+                            let file_info = FileInfo {
+                                file_name: Self::get_last_directory(key).unwrap_or_default(),
+                                size: "".to_string(),
+                                file_type: "Dir".to_string(),
+                                path: key.to_string(),
+                                is_directory: true,
+                            };
+                            let bucket_info = BucketInfo {
+                                bucket: Some(bucket.to_string()),
+                                region: Some(location.clone()),
+                                is_bucket: false,
+                            };
+                            all_objects.push(S3DataItem::init(bucket_info, file_info));
+                        }
                     }
                 }
                 Err(err) => {
@@ -543,6 +545,23 @@ impl S3DataFetcher {
         }
 
         Ok(all_objects)
+    }
+
+    fn get_last_directory(path: &str) -> Option<String> {
+        let parts: Vec<&str> = path.split('/').collect();
+        let parts: Vec<&str> = parts.into_iter().filter(|&part| !part.is_empty()).collect();
+        parts.last().map(|&last| format!("{}/", last))
+    }
+    fn get_filename(path: &str) -> Option<String> {
+        let parts: Vec<&str> = path.split('/').collect();
+        let parts: Vec<&str> = parts.into_iter().filter(|&part| !part.is_empty()).collect();
+        parts.last().and_then(|&last| {
+            if path.ends_with('/') {
+                None
+            } else {
+                Some(last.to_string())
+            }
+        })
     }
 
     /// This method is similar to `list_objects` but it fetches all the data recursively
@@ -565,7 +584,7 @@ impl S3DataFetcher {
         prefix: Option<String>,
         location: &'a str,
         all_objects: &'a mut Vec<S3DataItem>,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), Report>> + Send + 'a>> {
+    ) -> Pin<Box<dyn std::future::Future<Output=Result<(), Report>> + Send + 'a>> {
         Box::pin(async move {
             let creds = self.credentials.clone();
             let temp_file_creds = FileCredential {
@@ -597,10 +616,10 @@ impl S3DataFetcher {
                             let file_extension =
                                 path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
                             let file_info = FileInfo {
-                                file_name: key.to_string(),
+                                file_name: Self::get_filename(key).unwrap_or_default(),
                                 size,
                                 file_type: file_extension.to_string(),
-                                path: "".to_string(),
+                                path: key.to_string(),
                                 is_directory: false,
                             };
                             let bucket_info = BucketInfo {
@@ -618,7 +637,7 @@ impl S3DataFetcher {
                                 location,
                                 all_objects,
                             )
-                            .await?;
+                                .await?;
                         }
                     }
                     Err(err) => {

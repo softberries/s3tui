@@ -13,9 +13,14 @@ use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
 use color_eyre::eyre;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{broadcast, mpsc};
+use tokio::sync::Semaphore;
+
+/// Maximum simultaneous uploads/downloads
+static S3_OPERATIONS_CONCURRENCY_LEVEL: usize = 8;
 
 /// Handles all the actions, calls methods on external services and updates the state when necessary
 pub struct StateStore {
@@ -31,6 +36,7 @@ impl StateStore {
 }
 
 impl StateStore {
+
     fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
         let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
             .iter()
@@ -69,12 +75,15 @@ impl StateStore {
         download_tx: UnboundedSender<DownloadProgressItem>,
     ) {
         let items_with_children = self.flatten_s3_items(s3_selected_items);
+        let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_bucket && !item.is_directory {
                 let tx = selected_s3_transfers_tx.clone();
                 let down_tx = download_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
+                let semaphore = semaphore.clone();
                 tokio::spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
                     match fetcher.download_item(item.clone(), down_tx).await {
                         Ok(_) => {
                             if tx.send(item.clone()).is_err() {
@@ -82,7 +91,7 @@ impl StateStore {
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Failed to download data: {}", e);
+                            tracing::error!("Failed to download data: {}",  e);
                             let orig_item = item.clone();
                             let errored_item = S3SelectedItem {
                                 error: Some(e.to_string()),
@@ -108,12 +117,15 @@ impl StateStore {
         upload_tx: UnboundedSender<UploadProgressItem>,
     ) {
         let items_with_children = self.flatten_local_items(local_selected_items);
+        let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_directory {
                 let local_tx = selected_local_transfers_tx.clone();
                 let up_tx = upload_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
+                let semaphore = semaphore.clone();
                 tokio::spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
                     match fetcher.upload_item(item.clone(), up_tx).await {
                         Ok(_) => {
                             if local_tx.send(item.clone()).is_err() {
@@ -295,16 +307,19 @@ impl StateStore {
         s3_delete_tx: UnboundedSender<Option<String>>,
     ) {
         let items_with_children = self.flatten_s3_items(vec![item]);
+        let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_directory {
                 let delete_tx = s3_delete_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
+                let semaphore = semaphore.clone();
                 tokio::spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
                     match fetcher
                         .delete_data(
                             item.is_bucket,
                             item.bucket.clone(),
-                            item.name.clone(),
+                            item.path.clone().unwrap_or(item.name.clone()),
                             item.is_directory,
                         )
                         .await
