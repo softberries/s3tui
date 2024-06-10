@@ -238,20 +238,20 @@ impl S3DataFetcher {
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
-        path.push(item.name.clone());
+        path.push(item.path.clone().unwrap_or(item.name.clone()));
         self.create_directory_structure(&path)?;
         let mut file = File::create(&path)?;
         let bucket = item.bucket.expect("bucket must be defined").clone();
         let head_obj = client
             .head_object()
             .bucket(bucket.clone())
-            .key(item.name.clone())
+            .key(item.path.clone().unwrap_or(item.name.clone()))
             .send()
             .await?;
         match client
             .get_object()
             .bucket(bucket.clone())
-            .key(item.name.clone())
+            .key(item.path.clone().unwrap_or(item.name.clone()))
             .send()
             .await
         {
@@ -264,7 +264,7 @@ impl S3DataFetcher {
                     byte_count += bytes_len;
                     let progress = Self::calculate_download_percentage(total, byte_count);
                     let download_progress_item = DownloadProgressItem {
-                        name: item.name.clone(),
+                        name: item.path.clone().unwrap_or(item.name.clone())    ,
                         bucket: bucket.clone(),
                         progress,
                     };

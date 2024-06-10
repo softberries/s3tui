@@ -91,7 +91,7 @@ impl StateStore {
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Failed to download data: {}", e);
+                            tracing::error!("Failed to download data: {}",  e);
                             let orig_item = item.clone();
                             let errored_item = S3SelectedItem {
                                 error: Some(e.to_string()),
@@ -319,7 +319,7 @@ impl StateStore {
                         .delete_data(
                             item.is_bucket,
                             item.bucket.clone(),
-                            item.name.clone(),
+                            item.path.clone().unwrap_or(item.name.clone()),
                             item.is_directory,
                         )
                         .await
