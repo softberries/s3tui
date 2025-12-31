@@ -371,6 +371,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
+                endpoint_url: None
             },
             FileCredential {
                 name: "Azure".into(),
@@ -378,6 +379,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: true,
+                endpoint_url: None
             },
         ];
         let state = State::new(creds.clone());
@@ -393,6 +395,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
+                endpoint_url: None
             },
             FileCredential {
                 name: "Azure".into(),
@@ -400,6 +403,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
+                endpoint_url: None
             },
         ];
         let state = State::new(creds.clone());
@@ -415,6 +419,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: true,
+                endpoint_url: None
             },
             FileCredential {
                 name: "Azure".into(),
@@ -422,6 +427,7 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
+                endpoint_url: None
             },
         ];
         let mut state = State::new(creds.clone());

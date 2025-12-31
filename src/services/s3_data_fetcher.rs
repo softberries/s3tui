@@ -33,6 +33,7 @@ use http_body::{Body, SizeHint};
 #[derive(Clone)]
 pub struct S3DataFetcher {
     pub default_region: String,
+    pub endpoint_url: Option<String>,
     credentials: Credentials,
 }
 
@@ -161,6 +162,7 @@ impl S3DataFetcher {
         let access_key = creds.access_key;
         let secret_access_key = creds.secret_key;
         let default_region = creds.default_region;
+        let endpoint_url = creds.endpoint_url;
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
@@ -171,6 +173,7 @@ impl S3DataFetcher {
         S3DataFetcher {
             default_region,
             credentials,
+            endpoint_url,
         }
     }
 
@@ -389,12 +392,14 @@ impl S3DataFetcher {
         if is_bucket {
             let location = self.get_bucket_location(&name).await?;
             let creds = self.credentials.clone();
+            let endpoint_url = self.endpoint_url.clone();
             let temp_file_creds = FileCredential {
                 name: "temp".to_string(),
                 access_key: creds.access_key_id().to_string(),
                 secret_key: creds.secret_access_key().to_string(),
                 default_region: location.clone(),
                 selected: false,
+                endpoint_url,
             };
             let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
             let response = client_with_location
@@ -434,6 +439,7 @@ impl S3DataFetcher {
             access_key: creds.access_key_id().to_string(),
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
+            endpoint_url: self.endpoint_url.clone(),
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -480,6 +486,7 @@ impl S3DataFetcher {
             access_key: creds.access_key_id().to_string(),
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
+            endpoint_url: self.endpoint_url.clone(),
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -592,6 +599,7 @@ impl S3DataFetcher {
                 access_key: creds.access_key_id().to_string(),
                 secret_key: creds.secret_access_key().to_string(),
                 default_region: location.to_string(),
+                endpoint_url: self.endpoint_url.clone(),
                 selected: false,
             };
 
@@ -653,10 +661,12 @@ impl S3DataFetcher {
     async fn get_s3_client(&self, creds: Option<FileCredential>) -> Client {
         let credentials: Credentials;
         let default_region: String;
+        let endpoint_url: Option<String>;
         if let Some(crd) = creds {
             let access_key = crd.access_key;
             let secret_access_key = crd.secret_key;
             default_region = crd.default_region;
+            endpoint_url = crd.endpoint_url;
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
@@ -665,17 +675,33 @@ impl S3DataFetcher {
                 "manual", // Source, just a label for debugging
             );
         } else {
+            endpoint_url = self.endpoint_url.clone();
             credentials = self.credentials.clone();
             default_region = self.default_region.clone();
         }
         let region_provider = RegionProviderChain::first_try(Region::new(default_region))
             .or_default_provider()
             .or_else(Region::new("eu-north-1"));
-        let shared_config = aws_config::from_env()
-            .credentials_provider(credentials)
-            .region(region_provider)
-            .load()
-            .await;
-        Client::new(&shared_config)
+
+        if let Some(url) = endpoint_url {
+                let shared_config = aws_config::from_env()
+                .credentials_provider(credentials)
+                .region(region_provider)
+                .endpoint_url(&url)
+                .load()
+                .await;
+            Client::from_conf(
+                aws_sdk_s3::config::Builder::from(&shared_config)
+                    .force_path_style(true)
+                    .build(),
+            )
+        } else {
+            let shared_config = aws_config::from_env()
+                .credentials_provider(credentials)
+                .region(region_provider)
+                .load()
+                .await;
+            Client::new(&shared_config)
+        }
     }
 }

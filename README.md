@@ -85,12 +85,17 @@ productivity with S3 services.
     - Add as many configurations under `creds` directory (inside your `.data` directory specified with `S3TUI_DATA` env variable)
     - The file should look like the one below:
    
-```bash
+```
 access_key=YOUR_ACCESS_KEY
 secret_key=YOUR_SECRET_KEY
 default_region=eu-west-1
 ```
 Make sure there is a new line at the end and there are no leading spaces on the lines.
+
+For third-party s3 compatible storage like RustFS (https://rustfs.com/) you can add:
+```
+endpoint_url=http://localhost:9000
+```
 
 3. **Installation from crates.io**:
     - Ensure you have Rust and `cargo` installed.

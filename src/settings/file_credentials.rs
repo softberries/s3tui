@@ -11,6 +11,7 @@ pub struct FileCredential {
     pub access_key: String,
     pub secret_key: String,
     pub default_region: String,
+    pub endpoint_url: Option<String>,
     pub selected: bool,
 }
 
@@ -28,7 +29,7 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
 
         if path.is_file() {
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let (access_key, secret_key, default_region) = parse_credential_file(&path)?;
+            let (access_key, secret_key, default_region, endpoint_url) = parse_credential_file(&path)?;
 
             credentials.push(FileCredential {
                 name,
@@ -36,6 +37,7 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
                 secret_key,
                 default_region,
                 selected,
+                endpoint_url
             });
             selected = false; // Only the first entry is selected
         }
@@ -48,12 +50,13 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
     }
 }
 
-fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> {
+fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String, Option<String>)> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
     let mut access_key = String::new();
     let mut secret_key = String::new();
     let mut default_region = String::new();
+    let mut endpoint_url = None;
 
     for line in reader.lines() {
         let line = line?;
@@ -63,6 +66,8 @@ fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> 
             secret_key = stripped.trim().to_string()
         } else if let Some(stripped) = line.strip_prefix("default_region=") {
             default_region = stripped.trim().to_string()
+        } else if let Some(stripped) = line.strip_prefix("endpoint_url=") {
+            endpoint_url = Some(stripped.trim().to_string())
         }
     }
 
@@ -73,7 +78,7 @@ fn parse_credential_file(path: &Path) -> eyre::Result<(String, String, String)> 
         );
     }
 
-    Ok((access_key, secret_key, default_region))
+    Ok((access_key, secret_key, default_region, endpoint_url))
 }
 
 #[cfg(test)]
@@ -97,11 +102,12 @@ mod tests {
         setup_test_credentials(dir.path(), "cred1").unwrap();
 
         let file_path = dir.path().join("cred1");
-        let (access_key, secret_key, default_region) = parse_credential_file(&file_path).unwrap();
+        let (access_key, secret_key, default_region, endpoint_url) = parse_credential_file(&file_path).unwrap();
 
         assert_eq!(access_key, "AKIAIOSFODNN7EXAMPLE");
         assert_eq!(secret_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
         assert_eq!(default_region, "eu-north-1");
+        assert_eq!(endpoint_url, None);
     }
 
     #[test]

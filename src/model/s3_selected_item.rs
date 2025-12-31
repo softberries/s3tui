@@ -103,6 +103,7 @@ mod tests {
             access_key: "abc".into(),
             secret_key: "abc".into(),
             default_region: "abc".into(),
+            endpoint_url: None,
             selected: true,
         };
         let destination_dir = "/".into();
@@ -153,6 +154,7 @@ mod tests {
             access_key: "abc".into(),
             secret_key: "abc".into(),
             default_region: "abc".into(),
+            endpoint_url: None,
             selected: true,
         };
         let destination_dir = "/".into();
