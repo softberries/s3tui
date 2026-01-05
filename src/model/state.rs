@@ -371,7 +371,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style: false
             },
             FileCredential {
                 name: "Azure".into(),
@@ -379,7 +380,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: true,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style: false
             },
         ];
         let state = State::new(creds.clone());
@@ -395,7 +397,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style: false
             },
             FileCredential {
                 name: "Azure".into(),
@@ -403,7 +406,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style: false
             },
         ];
         let state = State::new(creds.clone());
@@ -419,7 +423,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: true,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style:  false
             },
             FileCredential {
                 name: "Azure".into(),
@@ -427,7 +432,8 @@ mod tests {
                 secret_key: "".to_string(),
                 default_region: "".to_string(),
                 selected: false,
-                endpoint_url: None
+                endpoint_url: None,
+                force_path_style: false
             },
         ];
         let mut state = State::new(creds.clone());

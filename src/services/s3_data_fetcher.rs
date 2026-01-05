@@ -34,6 +34,7 @@ use http_body::{Body, SizeHint};
 pub struct S3DataFetcher {
     pub default_region: String,
     pub endpoint_url: Option<String>,
+    pub force_path_style: bool,
     credentials: Credentials,
 }
 
@@ -163,6 +164,7 @@ impl S3DataFetcher {
         let secret_access_key = creds.secret_key;
         let default_region = creds.default_region;
         let endpoint_url = creds.endpoint_url;
+        let force_path_style = creds.force_path_style;
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
@@ -174,6 +176,7 @@ impl S3DataFetcher {
             default_region,
             credentials,
             endpoint_url,
+            force_path_style
         }
     }
 
@@ -393,6 +396,7 @@ impl S3DataFetcher {
             let location = self.get_bucket_location(&name).await?;
             let creds = self.credentials.clone();
             let endpoint_url = self.endpoint_url.clone();
+            let force_path_style = self.force_path_style.clone();
             let temp_file_creds = FileCredential {
                 name: "temp".to_string(),
                 access_key: creds.access_key_id().to_string(),
@@ -400,6 +404,7 @@ impl S3DataFetcher {
                 default_region: location.clone(),
                 selected: false,
                 endpoint_url,
+                force_path_style,
             };
             let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
             let response = client_with_location
@@ -440,6 +445,7 @@ impl S3DataFetcher {
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
             endpoint_url: self.endpoint_url.clone(),
+            force_path_style: self.force_path_style.clone(),
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -487,6 +493,7 @@ impl S3DataFetcher {
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
             endpoint_url: self.endpoint_url.clone(),
+            force_path_style: self.force_path_style.clone(),
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -600,6 +607,7 @@ impl S3DataFetcher {
                 secret_key: creds.secret_access_key().to_string(),
                 default_region: location.to_string(),
                 endpoint_url: self.endpoint_url.clone(),
+                force_path_style: self.force_path_style.clone(),
                 selected: false,
             };
 
@@ -662,11 +670,13 @@ impl S3DataFetcher {
         let credentials: Credentials;
         let default_region: String;
         let endpoint_url: Option<String>;
+        let force_path_style: bool;
         if let Some(crd) = creds {
             let access_key = crd.access_key;
             let secret_access_key = crd.secret_key;
             default_region = crd.default_region;
             endpoint_url = crd.endpoint_url;
+            force_path_style = crd.force_path_style;
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
@@ -676,6 +686,7 @@ impl S3DataFetcher {
             );
         } else {
             endpoint_url = self.endpoint_url.clone();
+            force_path_style = self.force_path_style;
             credentials = self.credentials.clone();
             default_region = self.default_region.clone();
         }
@@ -692,7 +703,7 @@ impl S3DataFetcher {
                 .await;
             Client::from_conf(
                 aws_sdk_s3::config::Builder::from(&shared_config)
-                    .force_path_style(true)
+                    .force_path_style(force_path_style)
                     .build(),
             )
         } else {

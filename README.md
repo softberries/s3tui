@@ -97,6 +97,13 @@ For third-party s3 compatible storage like RustFS (https://rustfs.com/) you can 
 endpoint_url=http://localhost:9000
 ```
 
+Some S3 compatible storage need to access for accessing the files the parameter [force_path_style](https://docs.aws.amazon.com/sdk-for-swift/latest/api/awss3/documentation/awss3/endpointparams/forcepathstyle/) set. 
+For this there is an optional parameter (default value=false) that can be set inside your `.data`
+
+```
+force_path_style=true
+```
+
 3. **Installation from crates.io**:
     - Ensure you have Rust and `cargo` installed.
     - Install with cargo

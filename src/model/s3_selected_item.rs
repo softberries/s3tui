@@ -104,6 +104,7 @@ mod tests {
             secret_key: "abc".into(),
             default_region: "abc".into(),
             endpoint_url: None,
+            force_path_style: false,
             selected: true,
         };
         let destination_dir = "/".into();
@@ -155,6 +156,7 @@ mod tests {
             secret_key: "abc".into(),
             default_region: "abc".into(),
             endpoint_url: None,
+            force_path_style: false,
             selected: true,
         };
         let destination_dir = "/".into();
