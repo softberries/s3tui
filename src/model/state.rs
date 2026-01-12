@@ -9,6 +9,17 @@ use crate::settings::file_credentials::FileCredential;
 use percent_encoding::percent_decode;
 use url::Url;
 
+/// Safely decode a URL-encoded string, returning the original on error
+fn decode_url_safe(encoded: &str) -> String {
+    percent_decode(encoded.as_bytes())
+        .decode_utf8()
+        .map(|cow| cow.into_owned())
+        .unwrap_or_else(|_| {
+            tracing::warn!("Failed to decode URL: {}", encoded);
+            encoded.to_string()
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum ActivePage {
     #[default]
@@ -231,12 +242,9 @@ impl State {
         let mut mutated_items: Vec<LocalSelectedItem> = Vec::new();
         for item in selected_items.clone().iter_mut() {
             if item.children.is_none() {
-                let encoded_name = percent_decode(name.as_bytes())
-                    .decode_utf8() // This returns a `Result<Cow<str>, Utf8Error>`
-                    .unwrap_or_else(|e| panic!("Decoding error: {}", e)) // Handle the error case
-                    .to_string(); // Convert `Cow<str>` to `String`
-                let name = String::from(&item.name);
-                if item.destination_bucket == *bucket_name && name == encoded_name {
+                let decoded_name = decode_url_safe(name);
+                let item_name = String::from(&item.name);
+                if item.destination_bucket == *bucket_name && item_name == decoded_name {
                     item.progress = progress_item.progress;
                     mutated_items.push(item.clone());
                 } else {
@@ -246,12 +254,9 @@ impl State {
                 let mut mutated_children: Vec<LocalSelectedItem> = Vec::new();
                 if let Some(mut children) = item.clone().children {
                     for child in children.iter_mut() {
-                        let encoded_name = percent_decode(name.as_bytes())
-                            .decode_utf8() // This returns a `Result<Cow<str>, Utf8Error>`
-                            .unwrap_or_else(|e| panic!("Decoding error: {}", e)) // Handle the error case
-                            .to_string();
-                        let name = String::from(&child.name);
-                        if child.destination_bucket == *bucket_name && name == encoded_name {
+                        let decoded_name = decode_url_safe(name);
+                        let child_name = String::from(&child.name);
+                        if child.destination_bucket == *bucket_name && child_name == decoded_name {
                             child.progress = progress_item.progress;
                             mutated_children.push(child.clone());
                         } else {
@@ -866,5 +871,28 @@ mod tests {
             50.0
         );
         assert_eq!(state.s3_selected_items[0].progress, 50.0);
+    }
+
+    #[test]
+    fn test_decode_url_safe_decodes_valid_utf8() {
+        let encoded = "Hello%20World";
+        let result = super::decode_url_safe(encoded);
+        assert_eq!(result, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_url_safe_returns_original_on_invalid_utf8() {
+        // This is a valid percent-encoded sequence but decodes to invalid UTF-8
+        let invalid_utf8 = "%FF%FE";
+        let result = super::decode_url_safe(invalid_utf8);
+        // Should return the original string on error
+        assert_eq!(result, invalid_utf8);
+    }
+
+    #[test]
+    fn test_decode_url_safe_handles_unencoded_string() {
+        let unencoded = "normal_filename.txt";
+        let result = super::decode_url_safe(unencoded);
+        assert_eq!(result, "normal_filename.txt");
     }
 }

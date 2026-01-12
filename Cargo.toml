@@ -18,8 +18,8 @@ human-panic = "1.2.3"
 signal-hook = "0.3.17"
 strip-ansi-escapes = "0.2.0"
 libc = "0.2.148"
-ratatui = { version = "0.26.1", features = ["all-widgets", "serde", "macros"] }
-throbber-widgets-tui = "0.5.0"
+ratatui = { version = "0.28.0", features = ["all-widgets", "serde", "macros"] }
+throbber-widgets-tui = "0.7.0"
 crossterm = { version = "0.27.0", features = ["event-stream"] }
 clap = { version = "4.4.5", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
 tokio = { version = "1.37.0", features = ["full"] }

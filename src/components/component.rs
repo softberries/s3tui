@@ -15,8 +15,6 @@ pub trait Component {
     where
         Self: Sized;
 
-    fn name(&self) -> &str;
-
     fn handle_key_event(&mut self, key: KeyEvent);
 }
 

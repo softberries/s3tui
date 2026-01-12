@@ -1,5 +1,6 @@
 use crate::components::component::{Component, ComponentRender};
 use crate::model::action::Action;
+use crate::model::has_children::flatten_items;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
@@ -74,10 +75,6 @@ impl Component for TransfersPage {
             },
             ..self
         }
-    }
-
-    fn name(&self) -> &str {
-        "Transfers"
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
@@ -213,7 +210,7 @@ impl TransfersPage {
             .cloned()
     }
 
-    fn get_row(&self, item: &TransferItem) -> Row {
+    fn get_row(&self, item: &TransferItem) -> Row<'_> {
         if item.error.is_some() {
             Row::new(item.to_columns().clone()).fg(Color::Red)
         } else if item.transferred {
@@ -223,39 +220,9 @@ impl TransfersPage {
         }
     }
 
-    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
-        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<S3SelectedItem> = s3_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
-
-    fn flatten_local_items(
-        &self,
-        local_selected_items: Vec<LocalSelectedItem>,
-    ) -> Vec<LocalSelectedItem> {
-        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<LocalSelectedItem> = local_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
-    fn get_status_line(&self) -> Paragraph {
-        let s3_items = self.flatten_s3_items(self.props.s3_selected_items.clone());
-        let local_items = self.flatten_local_items(self.props.local_selected_items.clone());
+    fn get_status_line(&self) -> Paragraph<'_> {
+        let s3_items = flatten_items(self.props.s3_selected_items.clone());
+        let local_items = flatten_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
         let transferred = s3_items.iter().filter(|i| i.transferred).count()
             + local_items.iter().filter(|i| i.transferred).count();
@@ -264,7 +231,7 @@ impl TransfersPage {
             .bg(Color::Blue)
     }
 
-    fn get_help_line(&self) -> Paragraph {
+    fn get_help_line(&self) -> Paragraph<'_> {
         if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
             Paragraph::new("| 'Esc' - file manager, 's' to select s3 account, ⌫ to remove ")
                 .style(Style::default().fg(Color::White))
@@ -278,7 +245,7 @@ impl TransfersPage {
         }
     }
 
-    fn get_transfers_table(&self) -> Table {
+    fn get_transfers_table(&self) -> Table<'_> {
         let focus_color = Color::Rgb(98, 114, 164);
         let header = Row::new(vec![
             "Up/Down",
@@ -341,7 +308,7 @@ impl ComponentRender<()> for TransfersPage {
                 Constraint::Min(0),    // Take all space left after accounting for the bottom line
                 Constraint::Length(1), // Exactly one line for the bottom
             ])
-            .split(frame.size());
+            .split(frame.area());
         let table = self.get_transfers_table();
         frame.render_stateful_widget(
             &table,

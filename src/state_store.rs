@@ -1,6 +1,7 @@
 //! This module provides functionality for interactions between UI and state
 use crate::model::action::Action;
 use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
@@ -36,37 +37,6 @@ impl StateStore {
 }
 
 impl StateStore {
-
-    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
-        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<S3SelectedItem> = s3_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
-
-    fn flatten_local_items(
-        &self,
-        local_selected_items: Vec<LocalSelectedItem>,
-    ) -> Vec<LocalSelectedItem> {
-        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<LocalSelectedItem> = local_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
     async fn download_data(
         &self,
         s3_data_fetcher: &S3DataFetcher,
@@ -74,7 +44,7 @@ impl StateStore {
         selected_s3_transfers_tx: UnboundedSender<S3SelectedItem>,
         download_tx: UnboundedSender<DownloadProgressItem>,
     ) {
-        let items_with_children = self.flatten_s3_items(s3_selected_items);
+        let items_with_children = flatten_items(s3_selected_items);
         let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_bucket && !item.is_directory {
@@ -116,7 +86,7 @@ impl StateStore {
         selected_local_transfers_tx: UnboundedSender<LocalSelectedItem>,
         upload_tx: UnboundedSender<UploadProgressItem>,
     ) {
-        let items_with_children = self.flatten_local_items(local_selected_items);
+        let items_with_children = flatten_items(local_selected_items);
         let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_directory {
@@ -306,7 +276,7 @@ impl StateStore {
         s3_data_fetcher: S3DataFetcher,
         s3_delete_tx: UnboundedSender<Option<String>>,
     ) {
-        let items_with_children = self.flatten_s3_items(vec![item]);
+        let items_with_children = flatten_items(vec![item]);
         let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
         for item in items_with_children {
             if !item.is_directory {

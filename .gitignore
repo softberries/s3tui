@@ -1,2 +1,8 @@
 /target
 .idea
+.data/creds/personal
+.data/creds/reco
+.data/crates_token.txt
+.data/s3tui.log
+tests_scenarios.md
+.claude

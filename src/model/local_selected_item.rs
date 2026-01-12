@@ -1,3 +1,4 @@
+use crate::model::has_children::HasChildren;
 use crate::model::local_data_item::LocalDataItem;
 use crate::settings::file_credentials::FileCredential;
 use std::fs;
@@ -41,26 +42,6 @@ impl LocalSelectedItem {
             error: None,
         }
     }
-    /*
-    let selected_item = LocalSelectedItem::new(
-                    sr.name.clone(),
-                    sr.path,
-                    sr.is_directory,
-                    selected_bucket,
-                    destination_path,
-                    self.props.current_s3_creds.clone(),
-                    None,
-                );
-    let selected_item = LocalSelectedItem::new(
-                sr.name,
-                sr.path,
-                sr.is_directory,
-                "".to_string(),
-                self.props.current_s3_path.clone(),
-                self.props.current_s3_creds.clone(),
-                None,
-            );
-     */
 
     pub fn from_local_data_item(item: LocalDataItem, s3_creds: FileCredential) -> Self {
         LocalSelectedItem {
@@ -134,6 +115,16 @@ impl PartialEq for LocalSelectedItem {
         self.name == other.name
             && self.path == other.path
             && self.is_directory == other.is_directory
+    }
+}
+
+impl HasChildren for LocalSelectedItem {
+    fn children(&self) -> Option<&Vec<Self>> {
+        self.children.as_ref()
+    }
+
+    fn take_children(self) -> Vec<Self> {
+        self.children.unwrap_or_default()
     }
 }
 

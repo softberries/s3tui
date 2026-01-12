@@ -32,15 +32,6 @@ pub struct AppRouter {
 }
 
 impl AppRouter {
-    fn get_active_page_component(&self) -> &dyn Component {
-        match self.props.active_page {
-            ActivePage::FileManager => &self.file_manager_page,
-            ActivePage::Help => &self.help_page,
-            ActivePage::Transfers => &self.transfers_page,
-            ActivePage::S3Creds => &self.s3_creds_page,
-        }
-    }
-
     fn get_active_page_component_mut(&mut self) -> &mut dyn Component {
         match self.props.active_page {
             ActivePage::FileManager => &mut self.file_manager_page,
@@ -79,11 +70,6 @@ impl Component for AppRouter {
             transfers_page: self.transfers_page.move_with_state(state),
             s3_creds_page: self.s3_creds_page.move_with_state(state),
         }
-    }
-
-    // route all functions to the active page
-    fn name(&self) -> &str {
-        self.get_active_page_component().name()
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {

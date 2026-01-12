@@ -57,10 +57,6 @@ impl Component for S3CredsPage {
         }
     }
 
-    fn name(&self) -> &str {
-        "S3CredsPage"
-    }
-
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
@@ -88,7 +84,7 @@ impl Component for S3CredsPage {
 }
 
 impl S3CredsPage {
-    fn get_s3_row(&self, item: &FileCredential) -> Row {
+    fn get_s3_row(&self, item: &FileCredential) -> Row<'_> {
         if item.selected {
             Row::new(vec![format!("{} (*)", item.name)])
         } else {
@@ -96,7 +92,7 @@ impl S3CredsPage {
         }
     }
 
-    fn get_s3_table(&self) -> Table {
+    fn get_s3_table(&self) -> Table<'_> {
         let focus_color = Color::Rgb(98, 114, 164);
         let header = Row::new(vec!["Account Name"])
             .bold()
@@ -187,7 +183,7 @@ impl ComponentRender<()> for S3CredsPage {
         let s3_table = self.get_s3_table();
         frame.render_stateful_widget(
             &s3_table,
-            frame.size(),
+            frame.area(),
             &mut self.props.clone().creds_table_state,
         )
     }
@@ -195,6 +191,7 @@ impl ComponentRender<()> for S3CredsPage {
 
 #[cfg(test)]
 mod tests {
+    use color_eyre::owo_colors::OwoColorize;
     use super::*;
     use crossterm::event::KeyModifiers;
     use tokio::sync::mpsc::unbounded_channel;
@@ -211,8 +208,8 @@ mod tests {
         };
         let state = State::new(vec![creds]);
 
-        let component = S3CredsPage::new(&state, tx);
-        assert_eq!(component.name(), "S3CredsPage");
+        let _component = S3CredsPage::new(&state, tx);
+        //test passes on no-panic
     }
 
     #[tokio::test]

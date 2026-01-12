@@ -1,3 +1,4 @@
+use crate::model::has_children::HasChildren;
 use crate::model::s3_data_item::S3DataItem;
 use crate::settings::file_credentials::FileCredential;
 
@@ -66,6 +67,16 @@ impl PartialEq for S3SelectedItem {
             && self.path == other.path
             && self.is_directory == other.is_directory
             && self.is_bucket == other.is_bucket
+    }
+}
+
+impl HasChildren for S3SelectedItem {
+    fn children(&self) -> Option<&Vec<Self>> {
+        self.children.as_ref()
+    }
+
+    fn take_children(self) -> Vec<Self> {
+        self.children.unwrap_or_default()
     }
 }
 

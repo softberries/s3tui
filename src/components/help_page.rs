@@ -79,10 +79,6 @@ impl Component for HelpPage {
         }
     }
 
-    fn name(&self) -> &str {
-        "Help Page"
-    }
-
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
@@ -111,7 +107,7 @@ impl ComponentRender<()> for HelpPage {
                 Constraint::Percentage(94),
                 Constraint::Percentage(3),
             ])
-            .split(frame.size());
+            .split(frame.area());
         let h_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
