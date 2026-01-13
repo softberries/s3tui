@@ -494,13 +494,13 @@ impl StateStore {
                         },
                         Some(item) = upload_rx.recv() => {
                             if state.active_page == ActivePage::Transfers {
-                                state.update_progress_on_selected_local_item(item);
+                                state.update_progress_on_selected_local_item(&item);
                                 self.state_tx.send(state.clone())?;
                             }
                         },
                         Some(item) = download_rx.recv() => {
                             if state.active_page == ActivePage::Transfers {
-                                state.update_progress_on_selected_s3_item(item);
+                                state.update_progress_on_selected_s3_item(&item);
                                 self.state_tx.send(state.clone())?;
                             }
                         },

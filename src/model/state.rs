@@ -220,14 +220,10 @@ impl State {
     The url can look smth like this:
     "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
      */
-    fn update_local_item_with_progress(
-        &mut self,
-        selected_items: Vec<LocalSelectedItem>,
-        progress_item: UploadProgressItem,
-    ) {
+    fn update_local_item_with_progress(&mut self, progress_item: &UploadProgressItem) {
         let url = match Url::parse(progress_item.uri.as_str()) {
             Ok(url) => url,
-            Err(_) => return, // Exit the function if URL parsing fails
+            Err(_) => return,
         };
         let host = url.host_str().unwrap_or_default();
         let path_segments = url
@@ -235,105 +231,54 @@ impl State {
             .map(|c| c.collect::<Vec<_>>())
             .unwrap_or_default();
         let name = path_segments.last().unwrap_or(&"");
+        let decoded_name = decode_url_safe(name);
 
         // Assume bucket name is the first segment of the host
-        let bucket_parts = host.split('.').collect::<Vec<_>>();
+        let bucket_parts: Vec<&str> = host.split('.').collect();
         let bucket_name = bucket_parts.first().unwrap_or(&"");
-        let mut mutated_items: Vec<LocalSelectedItem> = Vec::new();
-        for item in selected_items.clone().iter_mut() {
+
+        for item in &mut self.local_selected_items {
             if item.children.is_none() {
-                let decoded_name = decode_url_safe(name);
-                let item_name = String::from(&item.name);
-                if item.destination_bucket == *bucket_name && item_name == decoded_name {
+                if item.destination_bucket == *bucket_name && item.name == decoded_name {
                     item.progress = progress_item.progress;
-                    mutated_items.push(item.clone());
-                } else {
-                    mutated_items.push(item.clone());
                 }
-            } else {
-                let mut mutated_children: Vec<LocalSelectedItem> = Vec::new();
-                if let Some(mut children) = item.clone().children {
-                    for child in children.iter_mut() {
-                        let decoded_name = decode_url_safe(name);
-                        let child_name = String::from(&child.name);
-                        if child.destination_bucket == *bucket_name && child_name == decoded_name {
-                            child.progress = progress_item.progress;
-                            mutated_children.push(child.clone());
-                        } else {
-                            mutated_children.push(child.clone());
-                        }
+            } else if let Some(children) = &mut item.children {
+                for child in children.iter_mut() {
+                    if child.destination_bucket == *bucket_name && child.name == decoded_name {
+                        child.progress = progress_item.progress;
                     }
-                    item.children = Some(mutated_children.clone());
-                    item.progress = Self::calculate_overall_progress_local(mutated_children);
-                    item.transferred = item.progress == 100f64;
-                    mutated_items.push(item.clone());
                 }
+                item.progress = Self::calculate_overall_progress_local(children);
+                item.transferred = item.progress == 100f64;
             }
         }
-        self.local_selected_items = mutated_items;
     }
 
-    fn update_s3_item_with_progress(
-        &mut self,
-        selected_items: Vec<S3SelectedItem>,
-        progress_item: DownloadProgressItem,
-    ) {
-        let mut mutated_items: Vec<S3SelectedItem> = Vec::new();
-        for item in selected_items.clone().iter_mut() {
+    fn update_s3_item_with_progress(&mut self, progress_item: &DownloadProgressItem) {
+        let target_bucket = Some(progress_item.bucket.clone());
+
+        for item in &mut self.s3_selected_items {
             if item.children.is_none() {
-                if item.name == progress_item.name
-                    && item.bucket == Some(progress_item.bucket.clone())
-                {
+                if item.name == progress_item.name && item.bucket == target_bucket {
                     item.progress = progress_item.progress;
-                    mutated_items.push(item.clone());
-                } else {
-                    mutated_items.push(item.clone());
                 }
-            } else {
-                let mut mutated_children: Vec<S3SelectedItem> = Vec::new();
-                if let Some(mut children) = item.clone().children {
-                    for child in children.iter_mut() {
-                        if child.name == progress_item.name
-                            && child.bucket == Some(progress_item.bucket.clone())
-                        {
-                            child.progress = progress_item.progress;
-                            mutated_children.push(child.clone());
-                        } else {
-                            mutated_children.push(child.clone());
-                        }
+            } else if let Some(children) = &mut item.children {
+                for child in children.iter_mut() {
+                    if child.name == progress_item.name && child.bucket == target_bucket {
+                        child.progress = progress_item.progress;
                     }
-                    item.children = Some(mutated_children.clone());
-                    item.progress = Self::calculate_overall_progress_s3(mutated_children);
-                    item.transferred = item.progress == 100f64;
-                    mutated_items.push(item.clone());
                 }
+                item.progress = Self::calculate_overall_progress_s3(children);
+                item.transferred = item.progress == 100f64;
             }
         }
-        self.s3_selected_items = mutated_items;
     }
 
-    fn calculate_overall_progress_s3(items: Vec<S3SelectedItem>) -> f64 {
-        let all_progress: f64 = items
-            .clone()
-            .into_iter()
-            .map(|i| i.progress)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .sum();
-        if all_progress > 0.0 {
-            all_progress / items.len() as f64
-        } else {
-            0.0
+    fn calculate_overall_progress_s3(items: &[S3SelectedItem]) -> f64 {
+        if items.is_empty() {
+            return 0.0;
         }
-    }
-    fn calculate_overall_progress_local(items: Vec<LocalSelectedItem>) -> f64 {
-        let all_progress: f64 = items
-            .clone()
-            .into_iter()
-            .map(|i| i.progress)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .sum();
+        let all_progress: f64 = items.iter().map(|i| i.progress).sum();
         if all_progress > 0.0 {
             all_progress / items.len() as f64
         } else {
@@ -341,12 +286,24 @@ impl State {
         }
     }
 
-    pub fn update_progress_on_selected_local_item(&mut self, item: UploadProgressItem) {
-        self.update_local_item_with_progress(self.local_selected_items.clone(), item.clone());
+    fn calculate_overall_progress_local(items: &[LocalSelectedItem]) -> f64 {
+        if items.is_empty() {
+            return 0.0;
+        }
+        let all_progress: f64 = items.iter().map(|i| i.progress).sum();
+        if all_progress > 0.0 {
+            all_progress / items.len() as f64
+        } else {
+            0.0
+        }
     }
 
-    pub fn update_progress_on_selected_s3_item(&mut self, item: DownloadProgressItem) {
-        self.update_s3_item_with_progress(self.s3_selected_items.clone(), item.clone());
+    pub fn update_progress_on_selected_local_item(&mut self, item: &UploadProgressItem) {
+        self.update_local_item_with_progress(item);
+    }
+
+    pub fn update_progress_on_selected_s3_item(&mut self, item: &DownloadProgressItem) {
+        self.update_s3_item_with_progress(item);
     }
 }
 
@@ -699,7 +656,7 @@ mod tests {
             progress: 0.5,
             uri: "https://test-bucket.s3.amazonaws.com/path/to/file1.txt".into(),
         };
-        state.update_progress_on_selected_local_item(progress_item);
+        state.update_progress_on_selected_local_item(&progress_item);
 
         assert_eq!(state.local_selected_items[0].progress, 0.5);
     }
@@ -727,7 +684,7 @@ mod tests {
             bucket: "test-bucket".to_string(),
             name: "file1.txt".into(),
         };
-        state.update_progress_on_selected_s3_item(progress_item);
+        state.update_progress_on_selected_s3_item(&progress_item);
 
         assert_eq!(state.s3_selected_items[0].progress, 0.5);
     }
@@ -752,7 +709,7 @@ mod tests {
             progress: 50.0,
             uri: "https://test-bucket.s3.eu-west-1.amazonaws.com/file1.txt?x-id=PutObject".into(),
         };
-        state.update_local_item_with_progress(state.local_selected_items.clone(), progress_item);
+        state.update_local_item_with_progress(&progress_item);
         assert_eq!(state.local_selected_items[0].progress, 50.0);
     }
 
@@ -788,7 +745,7 @@ mod tests {
             progress: 50.0,
             uri: "https://test-bucket.s3.eu-west-1.amazonaws.com/file1.txt?x-id=PutObject".into(),
         };
-        state.update_local_item_with_progress(state.local_selected_items.clone(), progress_item);
+        state.update_local_item_with_progress(&progress_item);
         assert_eq!(
             state.local_selected_items[0]
                 .clone()
@@ -822,7 +779,7 @@ mod tests {
             bucket: "test-bucket".into(),
             name: "file1.txt".into(),
         };
-        state.update_s3_item_with_progress(state.s3_selected_items.clone(), progress_item);
+        state.update_s3_item_with_progress(&progress_item);
         assert_eq!(state.s3_selected_items[0].progress, 50.0);
     }
 
@@ -861,7 +818,7 @@ mod tests {
             bucket: "test-bucket".into(),
             name: "file1.txt".into(),
         };
-        state.update_s3_item_with_progress(state.s3_selected_items.clone(), progress_item);
+        state.update_s3_item_with_progress(&progress_item);
         assert_eq!(
             state.s3_selected_items[0]
                 .clone()

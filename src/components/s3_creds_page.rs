@@ -191,7 +191,6 @@ impl ComponentRender<()> for S3CredsPage {
 
 #[cfg(test)]
 mod tests {
-    use color_eyre::owo_colors::OwoColorize;
     use super::*;
     use crossterm::event::KeyModifiers;
     use tokio::sync::mpsc::unbounded_channel;
