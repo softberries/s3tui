@@ -1,3 +1,5 @@
+use crate::model::sorting::{parse_size_to_bytes, Sortable};
+
 /// Represents an item (file/directory) on your local machine
 #[derive(Debug, Clone)]
 pub struct LocalDataItem {
@@ -26,6 +28,24 @@ impl LocalDataItem {
     }
     pub fn to_columns(&self) -> Vec<String> {
         vec![self.name.clone(), self.size.clone(), self.file_type.clone()]
+    }
+}
+
+impl Sortable for LocalDataItem {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn size_bytes(&self) -> u64 {
+        parse_size_to_bytes(&self.size)
+    }
+
+    fn file_type(&self) -> &str {
+        &self.file_type
+    }
+
+    fn is_directory(&self) -> bool {
+        self.is_directory
     }
 }
 
