@@ -1,5 +1,6 @@
 //! This module provides functionality for keeping the application state
 use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::error::{LocalError, S3Error};
 use crate::model::has_children::calculate_overall_progress;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
@@ -47,9 +48,9 @@ pub struct State {
     pub current_s3_path: Option<String>,
     pub creds: Vec<FileCredential>,
     pub current_creds: FileCredential,
-    pub local_delete_state: Option<String>,
-    pub s3_delete_state: Option<String>,
-    pub create_bucket_state: Option<String>,
+    pub local_delete_error: Option<LocalError>,
+    pub s3_delete_error: Option<S3Error>,
+    pub create_bucket_error: Option<S3Error>,
 }
 
 impl State {
@@ -171,16 +172,16 @@ impl State {
         self.current_local_path = path;
     }
 
-    pub fn set_local_delete_error(&mut self, error_str: Option<String>) {
-        self.local_delete_state = error_str;
+    pub fn set_local_delete_error(&mut self, error: Option<LocalError>) {
+        self.local_delete_error = error;
     }
 
-    pub fn set_s3_delete_error(&mut self, error_str: Option<String>) {
-        self.s3_delete_state = error_str;
+    pub fn set_s3_delete_error(&mut self, error: Option<S3Error>) {
+        self.s3_delete_error = error;
     }
 
-    pub fn set_create_bucket_error(&mut self, error_str: Option<String>) {
-        self.create_bucket_state = error_str;
+    pub fn set_create_bucket_error(&mut self, error: Option<S3Error>) {
+        self.create_bucket_error = error;
     }
 
     pub fn set_current_local_path(&mut self, path: String) {

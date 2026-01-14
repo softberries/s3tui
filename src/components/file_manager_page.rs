@@ -1,5 +1,6 @@
 use crate::components::component::{Component, ComponentRender};
 use crate::model::action::Action;
+use crate::model::error::{LocalError, S3Error};
 use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
@@ -34,9 +35,9 @@ struct Props {
     current_s3_bucket: Option<String>,
     current_s3_path: String,
     current_s3_creds: FileCredential,
-    s3_delete_state: Option<String>,
-    local_delete_state: Option<String>,
-    create_bucket_state: Option<String>,
+    s3_delete_error: Option<S3Error>,
+    local_delete_error: Option<LocalError>,
+    create_bucket_error: Option<S3Error>,
 }
 
 impl From<&State> for Props {
@@ -57,9 +58,9 @@ impl From<&State> for Props {
             current_s3_bucket: st.current_s3_bucket,
             current_s3_path: st.current_s3_path.unwrap_or("/".to_string()),
             current_s3_creds: st.current_creds,
-            s3_delete_state: st.s3_delete_state,
-            local_delete_state: st.local_delete_state,
-            create_bucket_state: st.create_bucket_state,
+            s3_delete_error: st.s3_delete_error,
+            local_delete_error: st.local_delete_error,
+            create_bucket_error: st.create_bucket_error,
         }
     }
 }
@@ -892,9 +893,9 @@ impl Component for FileManagerPage {
     {
         let new_props = Props::from(state);
         FileManagerPage {
-            show_delete_error: state.s3_delete_state.is_some()
-                || state.local_delete_state.is_some(),
-            show_bucket_input: state.create_bucket_state.is_some(),
+            show_delete_error: state.s3_delete_error.is_some()
+                || state.local_delete_error.is_some(),
+            show_bucket_input: state.create_bucket_error.is_some(),
             props: Props {
                 s3_history: self.props.s3_history.clone(),
                 s3_table_state: self.props.s3_table_state.clone(),
@@ -1139,9 +1140,9 @@ impl ComponentRender<()> for FileManagerPage {
 
             frame.render_widget(Clear, area); //this clears out the background
             frame.render_widget(block, area);
-            if let Some(error) = self.props.create_bucket_state.clone() {
+            if let Some(ref error) = self.props.create_bucket_error {
                 let error_paragraph =
-                    Paragraph::new(format!("* {:?}", error)).style(Style::default().fg(Color::Red));
+                    Paragraph::new(format!("* {}", error)).style(Style::default().fg(Color::Red));
                 let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
                 frame.render_widget(Clear, error_rect);
                 frame.render_widget(error_paragraph, error_rect);
@@ -1201,12 +1202,12 @@ impl ComponentRender<()> for FileManagerPage {
             };
             frame.render_widget(block, area);
         } else if self.show_delete_error {
-            let possible_error = match (
-                self.props.s3_delete_state.clone(),
-                self.props.local_delete_state.clone(),
+            let possible_error: Option<String> = match (
+                &self.props.s3_delete_error,
+                &self.props.local_delete_error,
             ) {
-                (Some(err), None) => Some(err),
-                (None, Some(err)) => Some(err),
+                (Some(err), None) => Some(err.to_string()),
+                (None, Some(err)) => Some(err.to_string()),
                 _ => None,
             };
             if let Some(err) = possible_error {

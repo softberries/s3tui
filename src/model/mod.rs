@@ -1,6 +1,7 @@
 //! This module provides common objects used throughout the entire application
 
 pub mod action;
+pub mod error;
 pub mod has_children;
 pub mod download_progress_item;
 pub mod local_data_item;
