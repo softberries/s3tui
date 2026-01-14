@@ -282,7 +282,7 @@ impl TransfersPage {
                     .borders(Borders::ALL)
                     .title("Transfers List"),
             )
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .add_modifier(Modifier::REVERSED),

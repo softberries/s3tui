@@ -10,7 +10,6 @@ use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::block::Title;
 use ratatui::{prelude::*, widgets::*};
 use throbber_widgets_tui::Throbber;
 use tokio::sync::mpsc::UnboundedSender;
@@ -96,28 +95,20 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Problem detected! |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Problem detected! |",
+                    )])),
             )
             .fg(Color::Red)
     }
@@ -129,36 +120,28 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("ok", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(block::Position::Bottom),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("ok", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left)),
             );
         input
     }
@@ -169,50 +152,39 @@ impl FileManagerPage {
         text_color: Color,
         show_buttons: bool,
     ) -> Paragraph<'_> {
-        let ok_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("ok", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Enter",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Right)
-            .position(block::Position::Bottom);
-        let cancel_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Esc",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Left)
-            .position(block::Position::Bottom);
-        let input = Paragraph::new(text)
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default());
+
+        if show_buttons {
+            block = block
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("ok", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Enter",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Right))
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Esc",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Left));
+        }
+
+        Paragraph::new(text)
             .style(Style::default().fg(text_color))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default())
-                    .title(if show_buttons {
-                        ok_button
-                    } else {
-                        Title::default()
-                    })
-                    .title(if show_buttons {
-                        cancel_button
-                    } else {
-                        Title::default()
-                    }),
-            );
-        input
+            .block(block)
     }
     fn make_bucket_name_input(&self) -> Paragraph<'_> {
         let scroll = self.input.visual_scroll(INPUT_SIZE);
@@ -223,43 +195,31 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("save", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Enter new bucket name |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("save", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Enter new bucket name |",
+                    )])),
             );
         input
     }
@@ -292,7 +252,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()
@@ -422,7 +382,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()

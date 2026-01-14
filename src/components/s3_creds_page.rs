@@ -114,7 +114,7 @@ impl S3CredsPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Account list"))
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .add_modifier(Modifier::REVERSED),
