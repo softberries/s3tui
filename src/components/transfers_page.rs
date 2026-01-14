@@ -223,10 +223,50 @@ impl TransfersPage {
     fn get_status_line(&self) -> Paragraph<'_> {
         let s3_items = flatten_items(self.props.s3_selected_items.clone());
         let local_items = flatten_items(self.props.local_selected_items.clone());
-        let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
+        let total = s3_items.len() + local_items.len();
+
+        // Count by state
+        let completed = s3_items.iter().filter(|i| i.is_transferred()).count()
             + local_items.iter().filter(|i| i.is_transferred()).count();
-        Paragraph::new(format!(" Transfers: {}/{}", to_transfer, transferred))
+        let failed = s3_items
+            .iter()
+            .filter(|i| i.transfer_state.error().is_some())
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| i.transfer_state.error().is_some())
+                .count();
+        let in_progress = s3_items
+            .iter()
+            .filter(|i| {
+                !i.is_transferred()
+                    && i.transfer_state.error().is_none()
+                    && i.transfer_state.progress() > 0.0
+            })
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| {
+                    !i.is_transferred()
+                        && i.transfer_state.error().is_none()
+                        && i.transfer_state.progress() > 0.0
+                })
+                .count();
+        let pending = total - completed - failed - in_progress;
+
+        let status = if failed > 0 {
+            format!(
+                " Done:{} Pending:{} Active:{} Failed:{} | Total: {}",
+                completed, pending, in_progress, failed, total
+            )
+        } else {
+            format!(
+                " Done:{} Pending:{} Active:{} | Total: {}",
+                completed, pending, in_progress, total
+            )
+        };
+
+        Paragraph::new(status)
             .style(Style::default().fg(Color::White))
             .bg(Color::Blue)
     }
@@ -248,13 +288,13 @@ impl TransfersPage {
     fn get_transfers_table(&self) -> Table<'_> {
         let focus_color = Color::Rgb(98, 114, 164);
         let header = Row::new(vec![
-            "Up/Down",
+            "↕",
             "Bucket",
             "Item",
             "Destination",
-            "S3 Account",
+            "Account",
             "Progress",
-            "Error?",
+            "Error",
         ])
         .fg(focus_color)
         .bold()
@@ -267,13 +307,13 @@ impl TransfersPage {
             .iter()
             .map(|item| TransfersPage::get_row(self, item));
         let widths = [
-            Constraint::Length(5),
+            Constraint::Length(3),
             Constraint::Length(15),
             Constraint::Length(20),
             Constraint::Length(20),
             Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(10),
+            Constraint::Length(18),
+            Constraint::Length(15),
         ];
         let table = Table::new(rows, widths)
             .header(header)
@@ -288,13 +328,13 @@ impl TransfersPage {
                     .add_modifier(Modifier::REVERSED),
             )
             .widths([
-                Constraint::Percentage(5),
+                Constraint::Percentage(3),
+                Constraint::Percentage(14),
+                Constraint::Percentage(18),
+                Constraint::Percentage(18),
+                Constraint::Percentage(10),
+                Constraint::Percentage(17),
                 Constraint::Percentage(15),
-                Constraint::Percentage(20),
-                Constraint::Percentage(20),
-                Constraint::Percentage(10),
-                Constraint::Percentage(10),
-                Constraint::Percentage(10),
             ]);
         table
     }

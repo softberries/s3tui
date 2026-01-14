@@ -2,6 +2,8 @@ use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::transfer_state::TransferState;
 use crate::settings::file_credentials::FileCredential;
+use crate::utils::format_progress_bar;
+use std::time::Instant;
 
 /// Represents an item (file/directory/bucket) on your transfers list
 #[derive(Debug, Clone)]
@@ -13,11 +15,28 @@ pub struct TransferItem {
     pub destination_dir: String,
     pub s3_creds: FileCredential,
     pub transfer_state: TransferState,
+    /// Total size of the file in bytes (0 if unknown)
+    /// Note: Currently unused - infrastructure for future byte-level tracking
+    #[allow(dead_code)]
+    pub total_bytes: u64,
+    /// Bytes transferred so far
+    /// Note: Currently unused - infrastructure for future byte-level tracking
+    #[allow(dead_code)]
+    pub bytes_transferred: u64,
+    /// When the transfer started (for speed calculation)
+    /// Note: Currently unused - infrastructure for future byte-level tracking
+    #[allow(dead_code)]
+    pub started_at: Option<Instant>,
 }
 
 impl TransferItem {
+    /// Progress bar width in characters
+    const PROGRESS_BAR_WIDTH: usize = 8;
+
     pub fn to_columns(&self) -> Vec<String> {
-        let progress = format!("{:.2}%", self.transfer_state.progress());
+        let progress_pct = self.transfer_state.progress();
+        let progress_bar = format_progress_bar(progress_pct, Self::PROGRESS_BAR_WIDTH);
+        let progress = format!("{} {:>5.1}%", progress_bar, progress_pct);
         let error = self
             .transfer_state
             .error()
@@ -43,6 +62,9 @@ impl TransferItem {
             destination_dir: item.destination_dir,
             s3_creds: item.s3_creds,
             transfer_state: item.transfer_state,
+            total_bytes: 0,
+            bytes_transferred: 0,
+            started_at: None,
         }
     }
 
@@ -55,6 +77,34 @@ impl TransferItem {
             destination_dir: item.destination_path,
             s3_creds: item.s3_creds,
             transfer_state: item.transfer_state,
+            total_bytes: 0,
+            bytes_transferred: 0,
+            started_at: None,
+        }
+    }
+
+    /// Calculate the current transfer speed in bytes per second
+    /// Note: Currently unused - infrastructure for future byte-level tracking
+    #[allow(dead_code)]
+    pub fn speed(&self) -> f64 {
+        if let Some(started_at) = self.started_at {
+            let elapsed = started_at.elapsed().as_secs_f64();
+            crate::utils::calculate_transfer_speed(self.bytes_transferred, elapsed)
+        } else {
+            0.0
+        }
+    }
+
+    /// Calculate estimated time remaining in seconds
+    /// Note: Currently unused - infrastructure for future byte-level tracking
+    #[allow(dead_code)]
+    pub fn eta(&self) -> Option<u64> {
+        let speed = self.speed();
+        if speed > 0.0 && self.total_bytes > self.bytes_transferred {
+            let remaining = self.total_bytes - self.bytes_transferred;
+            crate::utils::calculate_eta(remaining, speed)
+        } else {
+            None
         }
     }
 
