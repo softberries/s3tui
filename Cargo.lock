@@ -2868,7 +2868,7 @@ checksum = "e86697c916019a8588c99b5fac3cead74ec0b4b819707a682fd4d23fa0ce1ba1"
 
 [[package]]
 name = "s3tui"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
