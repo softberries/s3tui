@@ -11,4 +11,5 @@ pub mod s3_data_item;
 pub mod s3_selected_item;
 pub mod state;
 pub mod transfer_item;
+pub mod transfer_state;
 pub mod upload_progress_item;

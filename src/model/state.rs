@@ -6,6 +6,7 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::transfer_state::TransferState;
 use crate::model::upload_progress_item::UploadProgressItem;
 use crate::settings::file_credentials::FileCredential;
 use percent_encoding::percent_decode;
@@ -75,79 +76,97 @@ impl State {
 
     pub fn update_selected_s3_transfers(&mut self, item: S3SelectedItem) {
         for it in self.s3_selected_items.iter_mut() {
-            if it.name == item.name && item.error.is_none() {
-                it.transferred = true;
-                it.progress = 100f64;
-            } else if it.name == item.name && item.error.is_some() {
-                it.transferred = false;
-                it.progress = 0f64;
-                it.error.clone_from(&item.error);
+            if it.name == item.name {
+                match &item.transfer_state {
+                    TransferState::Failed(err) => {
+                        it.transfer_state = TransferState::Failed(err.clone());
+                    }
+                    _ => {
+                        it.transfer_state = TransferState::Completed;
+                    }
+                }
             }
             if let Some(children) = it.children.as_mut() {
                 for itc in children.iter_mut() {
-                    if itc.name == item.name && item.error.is_none() {
-                        itc.transferred = true;
-                        itc.progress = 100f64;
-                    } else if itc.name == item.name && item.error.is_some() {
-                        itc.transferred = false;
-                        itc.progress = 0f64;
-                        itc.error.clone_from(&item.error);
+                    if itc.name == item.name {
+                        match &item.transfer_state {
+                            TransferState::Failed(err) => {
+                                itc.transfer_state = TransferState::Failed(err.clone());
+                            }
+                            _ => {
+                                itc.transfer_state = TransferState::Completed;
+                            }
+                        }
                     }
                 }
                 // Recalculate parent progress based on children
-                it.progress = calculate_overall_progress(children);
+                let progress = calculate_overall_progress(children);
                 // Parent is only transferred when ALL children are transferred
-                it.transferred = children.iter().all(|c| c.transferred);
+                let all_completed = children.iter().all(|c| c.is_transferred());
+                if all_completed {
+                    it.transfer_state = TransferState::Completed;
+                } else {
+                    it.transfer_state = TransferState::InProgress(progress);
+                }
             }
         }
     }
 
     pub fn update_selected_local_transfers(&mut self, item: LocalSelectedItem) {
         for it in self.local_selected_items.iter_mut() {
-            if it.name == item.name && item.error.is_none() {
-                it.transferred = true;
-                it.progress = 100f64;
-            } else if it.name == item.name && item.error.is_some() {
-                it.transferred = false;
-                it.progress = 0f64;
-                it.error.clone_from(&item.error);
+            if it.name == item.name {
+                match &item.transfer_state {
+                    TransferState::Failed(err) => {
+                        it.transfer_state = TransferState::Failed(err.clone());
+                    }
+                    _ => {
+                        it.transfer_state = TransferState::Completed;
+                    }
+                }
             }
             if let Some(children) = it.children.as_mut() {
                 for itc in children.iter_mut() {
-                    if itc.name == item.name && item.error.is_none() {
-                        itc.transferred = true;
-                        itc.progress = 100f64;
-                    } else if itc.name == item.name && item.error.is_some() {
-                        itc.transferred = false;
-                        itc.progress = 0f64;
-                        itc.error.clone_from(&item.error);
+                    if itc.name == item.name {
+                        match &item.transfer_state {
+                            TransferState::Failed(err) => {
+                                itc.transfer_state = TransferState::Failed(err.clone());
+                            }
+                            _ => {
+                                itc.transfer_state = TransferState::Completed;
+                            }
+                        }
                     }
                 }
                 // Recalculate parent progress based on children
-                it.progress = calculate_overall_progress(children);
+                let progress = calculate_overall_progress(children);
                 // Parent is only transferred when ALL children are transferred
-                it.transferred = children.iter().all(|c| c.transferred);
+                let all_completed = children.iter().all(|c| c.is_transferred());
+                if all_completed {
+                    it.transfer_state = TransferState::Completed;
+                } else {
+                    it.transfer_state = TransferState::InProgress(progress);
+                }
             }
         }
     }
 
     pub fn remove_already_transferred_items(&mut self) {
-        self.s3_selected_items.retain(|it| !it.transferred);
-        self.local_selected_items.retain(|it| !it.transferred);
+        self.s3_selected_items.retain(|it| !it.is_transferred());
+        self.local_selected_items.retain(|it| !it.is_transferred());
     }
 
     pub fn all_uploads_complete_for_bucket(&self, bucket: &str) -> bool {
         self.local_selected_items
             .iter()
             .filter(|item| item.destination_bucket == bucket)
-            .all(|item| item.transferred)
+            .all(|item| item.is_transferred())
     }
 
     pub fn all_downloads_complete_for_directory(&self, directory: &str) -> bool {
         self.s3_selected_items
             .iter()
             .filter(|item| item.destination_dir == directory)
-            .all(|item| item.transferred)
+            .all(|item| item.is_transferred())
     }
 
     pub fn update_buckets(
@@ -270,25 +289,26 @@ impl State {
 
         for item in &mut self.local_selected_items {
             // Skip already-transferred items to avoid race conditions with late progress updates
-            if item.transferred {
+            if item.is_transferred() {
                 continue;
             }
 
             if item.children.is_none() {
                 if item.destination_bucket == *bucket_name && item.name == decoded_name {
-                    item.progress = progress_item.progress;
+                    item.transfer_state = TransferState::InProgress(progress_item.progress);
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
                     // Skip already-transferred children
-                    if child.transferred {
+                    if child.is_transferred() {
                         continue;
                     }
                     if child.destination_bucket == *bucket_name && child.name == decoded_name {
-                        child.progress = progress_item.progress;
+                        child.transfer_state = TransferState::InProgress(progress_item.progress);
                     }
                 }
-                item.progress = calculate_overall_progress(children);
+                let progress = calculate_overall_progress(children);
+                item.transfer_state = TransferState::InProgress(progress);
             }
         }
     }
@@ -301,26 +321,27 @@ impl State {
             let item_key = item.path.as_ref().unwrap_or(&item.name);
 
             // Skip already-transferred items to avoid race conditions with late progress updates
-            if item.transferred {
+            if item.is_transferred() {
                 continue;
             }
 
             if item.children.is_none() {
                 if item_key == &progress_item.name && item.bucket == target_bucket {
-                    item.progress = progress_item.progress;
+                    item.transfer_state = TransferState::InProgress(progress_item.progress);
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
                     // Skip already-transferred children
-                    if child.transferred {
+                    if child.is_transferred() {
                         continue;
                     }
                     let child_key = child.path.as_ref().unwrap_or(&child.name);
                     if child_key == &progress_item.name && child.bucket == target_bucket {
-                        child.progress = progress_item.progress;
+                        child.transfer_state = TransferState::InProgress(progress_item.progress);
                     }
                 }
-                item.progress = calculate_overall_progress(children);
+                let progress = calculate_overall_progress(children);
+                item.transfer_state = TransferState::InProgress(progress);
             }
         }
     }
@@ -430,11 +451,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "".to_string(),
-            transferred: false,
             s3_creds: Default::default(),
-            progress: 0f64,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
 
         state.add_s3_selected_item(item.clone());
@@ -451,14 +470,12 @@ mod tests {
         let item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
 
         state.add_local_selected_item(item.clone());
@@ -479,16 +496,14 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
-        assert!(state.s3_selected_items[0].transferred);
-        assert_eq!(state.s3_selected_items[0].progress, 100f64);
+        assert!(state.s3_selected_items[0].is_transferred());
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 100f64);
     }
 
     #[test]
@@ -501,11 +516,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let selected_item = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -514,11 +527,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: Some(vec![child.clone()]),
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(child.clone());
@@ -541,16 +552,14 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: Some("Error".into()),
+            transfer_state: TransferState::Failed("Error".into()),
         };
         state.add_s3_selected_item(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
-        assert!(!state.s3_selected_items[0].transferred);
-        assert_eq!(state.s3_selected_items[0].progress, 0f64);
+        assert!(!state.s3_selected_items[0].is_transferred());
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 0f64);
     }
 
     #[test]
@@ -559,19 +568,17 @@ mod tests {
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
-        assert!(state.local_selected_items[0].transferred);
-        assert_eq!(state.local_selected_items[0].progress, 100f64);
+        assert!(state.local_selected_items[0].is_transferred());
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 100f64);
     }
 
     #[test]
@@ -580,19 +587,17 @@ mod tests {
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: Some("Error".into()),
+            transfer_state: TransferState::Failed("Error".into()),
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
-        assert!(!state.local_selected_items[0].transferred);
-        assert_eq!(state.local_selected_items[0].progress, 0f64);
+        assert!(!state.local_selected_items[0].is_transferred());
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 0f64);
     }
 
     #[test]
@@ -601,26 +606,22 @@ mod tests {
         let local_item_not_transfered = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let local_item_transfered = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let s3_item_not_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -629,11 +630,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let s3_item_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -642,11 +641,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: true,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         state.add_local_selected_item(local_item_transfered);
         state.add_local_selected_item(local_item_not_transfered);
@@ -658,8 +655,8 @@ mod tests {
         state.remove_already_transferred_items();
         assert_eq!(state.s3_selected_items.len(), 1);
         assert_eq!(state.local_selected_items.len(), 1);
-        assert!(!state.s3_selected_items[0].transferred);
-        assert!(!state.local_selected_items[0].transferred);
+        assert!(!state.s3_selected_items[0].is_transferred());
+        assert!(!state.local_selected_items[0].is_transferred());
     }
 
     #[test]
@@ -668,14 +665,12 @@ mod tests {
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
 
         state.local_selected_items.push(selected_item.clone());
@@ -685,7 +680,7 @@ mod tests {
         };
         state.update_progress_on_selected_local_item(&progress_item);
 
-        assert_eq!(state.local_selected_items[0].progress, 0.5);
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 0.5);
     }
 
     #[test]
@@ -698,11 +693,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
 
         state.s3_selected_items.push(item.clone());
@@ -714,7 +707,7 @@ mod tests {
         };
         state.update_progress_on_selected_s3_item(&progress_item);
 
-        assert_eq!(state.s3_selected_items[0].progress, 0.5);
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 0.5);
     }
 
     #[test]
@@ -723,14 +716,12 @@ mod tests {
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.local_selected_items = vec![selected_item];
         let progress_item = UploadProgressItem {
@@ -738,7 +729,7 @@ mod tests {
             uri: "https://test-bucket.s3.eu-west-1.amazonaws.com/file1.txt?x-id=PutObject".into(),
         };
         state.update_local_item_with_progress(&progress_item);
-        assert_eq!(state.local_selected_items[0].progress, 50.0);
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 50.0);
     }
 
     #[test]
@@ -747,26 +738,22 @@ mod tests {
         let child = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "/".into(),
             path: "path/to".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: Some(vec![child]),
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.local_selected_items = vec![selected_item];
         let progress_item = UploadProgressItem {
@@ -779,10 +766,11 @@ mod tests {
                 .clone()
                 .children
                 .unwrap_or_default()[0]
-                .progress,
+                .transfer_state
+                .progress(),
             50.0
         );
-        assert_eq!(state.local_selected_items[0].progress, 50.0);
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 50.0);
     }
 
     #[test]
@@ -795,11 +783,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.s3_selected_items = vec![selected_item];
         // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
@@ -809,7 +795,7 @@ mod tests {
             name: "path/to/file1.txt".into(),
         };
         state.update_s3_item_with_progress(&progress_item);
-        assert_eq!(state.s3_selected_items[0].progress, 50.0);
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 50.0);
     }
 
     #[test]
@@ -822,11 +808,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let selected_item = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -835,11 +819,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 0.0,
             children: Some(vec![child.clone()]),
-            error: None,
+            transfer_state: TransferState::default(),
         };
         state.s3_selected_items = vec![selected_item];
         // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
@@ -854,10 +836,11 @@ mod tests {
                 .clone()
                 .children
                 .unwrap_or_default()[0]
-                .progress,
+                .transfer_state
+                .progress(),
             50.0
         );
-        assert_eq!(state.s3_selected_items[0].progress, 50.0);
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 50.0);
     }
 
     #[test]
@@ -889,26 +872,22 @@ mod tests {
         let item1 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 100.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file2.txt".into(),
             path: "path/to/file2.txt".into(),
-            progress: 100.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -921,26 +900,22 @@ mod tests {
         let item1 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 100.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file2.txt".into(),
             path: "path/to/file2.txt".into(),
-            progress: 50.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::InProgress(50.0),
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -953,26 +928,22 @@ mod tests {
         let item1 = LocalSelectedItem {
             destination_bucket: "bucket-a".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 100.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "bucket-b".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file2.txt".into(),
             path: "path/to/file2.txt".into(),
-            progress: 50.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::InProgress(50.0),
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -991,11 +962,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/downloads".into(),
-            transferred: true,
             s3_creds: FileCredential::default(),
-            progress: 100.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1004,11 +973,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/downloads".into(),
-            transferred: true,
             s3_creds: FileCredential::default(),
-            progress: 100.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);
@@ -1025,11 +992,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/downloads".into(),
-            transferred: true,
             s3_creds: FileCredential::default(),
-            progress: 100.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1038,11 +1003,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/downloads".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 50.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::InProgress(50.0),
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);
@@ -1059,11 +1022,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/dir-a".into(),
-            transferred: true,
             s3_creds: FileCredential::default(),
-            progress: 100.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1072,11 +1033,9 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "/home/user/dir-b".into(),
-            transferred: false,
             s3_creds: FileCredential::default(),
-            progress: 50.0,
             children: None,
-            error: None,
+            transfer_state: TransferState::InProgress(50.0),
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);

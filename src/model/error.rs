@@ -111,43 +111,6 @@ impl LocalError {
     }
 }
 
-/// Unified operation error for both S3 and local operations
-#[derive(Debug, Clone, PartialEq)]
-pub enum OperationError {
-    S3(S3Error),
-    Local(LocalError),
-}
-
-impl fmt::Display for OperationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OperationError::S3(e) => write!(f, "{}", e),
-            OperationError::Local(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl From<S3Error> for OperationError {
-    fn from(e: S3Error) -> Self {
-        OperationError::S3(e)
-    }
-}
-
-impl From<LocalError> for OperationError {
-    fn from(e: LocalError) -> Self {
-        OperationError::Local(e)
-    }
-}
-
-/// Result type for operations that may fail
-pub type OperationResult<T = ()> = Result<T, OperationError>;
-
-/// Result type for S3-specific operations
-pub type S3Result<T = ()> = Result<T, S3Error>;
-
-/// Result type for local filesystem operations
-pub type LocalResult<T = ()> = Result<T, LocalError>;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,19 +155,5 @@ mod tests {
     fn test_local_error_display() {
         let err = LocalError::NotFound("/path/to/file".into());
         assert_eq!(format!("{}", err), "Not found: /path/to/file");
-    }
-
-    #[test]
-    fn test_operation_error_from_s3() {
-        let s3_err = S3Error::AccessDenied("test".into());
-        let op_err: OperationError = s3_err.into();
-        assert!(matches!(op_err, OperationError::S3(_)));
-    }
-
-    #[test]
-    fn test_operation_error_from_local() {
-        let local_err = LocalError::NotFound("test".into());
-        let op_err: OperationError = local_err.into();
-        assert!(matches!(op_err, OperationError::Local(_)));
     }
 }

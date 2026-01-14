@@ -4,6 +4,7 @@ use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::error::{LocalError, S3Error};
 use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::transfer_state::TransferState;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
@@ -63,13 +64,8 @@ impl StateStore {
                         }
                         Err(e) => {
                             tracing::error!("Failed to download data: {}",  e);
-                            let orig_item = item.clone();
-                            let errored_item = S3SelectedItem {
-                                error: Some(e.to_string()),
-                                transferred: false,
-                                progress: 0f64,
-                                ..orig_item
-                            };
+                            let mut errored_item = item.clone();
+                            errored_item.transfer_state = TransferState::Failed(e.to_string());
                             if tx.send(errored_item).is_err() {
                                 tracing::error!("Failed to send item in error");
                             }
@@ -105,13 +101,8 @@ impl StateStore {
                         }
                         Err(e) => {
                             tracing::error!("Failed to upload data: {}", e);
-                            let orig_item = item.clone();
-                            let errored_item = LocalSelectedItem {
-                                error: Some(e.to_string()),
-                                transferred: false,
-                                progress: 0f64,
-                                ..orig_item
-                            };
+                            let mut errored_item = item.clone();
+                            errored_item.transfer_state = TransferState::Failed(e.to_string());
                             if local_tx.send(errored_item).is_err() {
                                 tracing::error!("Failed to send item in error");
                             }

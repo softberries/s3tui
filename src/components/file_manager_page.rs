@@ -310,8 +310,8 @@ impl FileManagerPage {
         let s3_items = flatten_items(self.props.s3_selected_items.clone());
         let local_items = flatten_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.transferred).count()
-            + local_items.iter().filter(|i| i.transferred).count();
+        let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
+            + local_items.iter().filter(|i| i.is_transferred()).count();
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(
                 " Account: {} • Bucket: {} • Transfers: {}/{}",
