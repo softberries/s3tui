@@ -18,6 +18,9 @@ pr_branch_prefix = "release-plz-"
 # Publish timeout
 publish_timeout = "10m"
 
+# enable version bumpting
+release_commits = "^(feat|fix|refactor|perf|docs)"
+
 [changelog]
 # Protect breaking change commits from being hidden
 protect_breaking_commits = true
