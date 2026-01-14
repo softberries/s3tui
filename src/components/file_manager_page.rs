@@ -333,13 +333,13 @@ impl FileManagerPage {
     fn get_help_line(&self) -> Paragraph<'_> {
         if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
             Paragraph::new(
-                "| 't' transfer select, 's' s3 account, 'l' transfers list, 'Esc/Enter' browsing",
+                "| '?' help, 'l' transfers list, 'Esc/Enter' browsing",
             )
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
-            Paragraph::new("| Press '?' for help")
+            Paragraph::new("| '?' help, 'l' transfers list, 's' select s3 account")
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
@@ -612,6 +612,22 @@ impl FileManagerPage {
             bucket: self.current_state().current_bucket.clone(),
             prefix: self.current_state().current_prefix.clone(),
         });
+    }
+
+    fn handle_refresh(&mut self) {
+        if self.props.s3_loading {
+            return;
+        }
+        if self.s3_panel_selected {
+            let _ = self.action_tx.send(Action::FetchS3Data {
+                bucket: self.current_state().current_bucket.clone(),
+                prefix: self.current_state().current_prefix.clone(),
+            });
+        } else {
+            let _ = self.action_tx.send(Action::FetchLocalData {
+                path: self.props.current_local_path.clone(),
+            });
+        }
     }
 
     fn transfer_from_s3_to_local(&mut self) {
@@ -1030,6 +1046,9 @@ impl Component for FileManagerPage {
                 }
                 KeyCode::Char('q') => {
                     let _ = self.action_tx.send(Action::Exit);
+                }
+                KeyCode::F(5) => {
+                    self.handle_refresh();
                 }
                 _ => {}
             }

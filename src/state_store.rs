@@ -473,11 +473,22 @@ impl StateStore {
                             }
                         },
                         Some(item) = selected_s3_transfers_rx.recv() => {
+                            let dest_dir = item.destination_dir.clone();
                             state.update_selected_s3_transfers(item);
+                            // Auto-refresh local view when all downloads to a directory complete
+                            if state.all_downloads_complete_for_directory(&dest_dir) {
+                                self.fetch_local_data(Some(dest_dir), local_data_fetcher.clone(), local_tx.clone()).await;
+                            }
                             self.state_tx.send(state.clone())?;
                         },
                         Some(item) = selected_local_transfers_rx.recv() => {
+                            let dest_bucket = item.destination_bucket.clone();
                             state.update_selected_local_transfers(item);
+                            // Auto-refresh S3 view when all uploads to a bucket complete
+                            if state.all_uploads_complete_for_bucket(&dest_bucket) {
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                self.fetch_s3_data(Some(dest_bucket), None, s3_data_fetcher, s3_tx.clone()).await;
+                            }
                             self.state_tx.send(state.clone())?;
                         },
                         Some((bucket, prefix, data)) = s3_rx.recv() => {

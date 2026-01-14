@@ -134,6 +134,20 @@ impl State {
         self.local_selected_items.retain(|it| !it.transferred);
     }
 
+    pub fn all_uploads_complete_for_bucket(&self, bucket: &str) -> bool {
+        self.local_selected_items
+            .iter()
+            .filter(|item| item.destination_bucket == bucket)
+            .all(|item| item.transferred)
+    }
+
+    pub fn all_downloads_complete_for_directory(&self, directory: &str) -> bool {
+        self.s3_selected_items
+            .iter()
+            .filter(|item| item.destination_dir == directory)
+            .all(|item| item.transferred)
+    }
+
     pub fn update_buckets(
         &mut self,
         bucket: Option<String>,
@@ -889,5 +903,207 @@ mod tests {
         let unencoded = "normal_filename.txt";
         let result = super::decode_url_safe(unencoded);
         assert_eq!(result, "normal_filename.txt");
+    }
+
+    #[test]
+    fn all_uploads_complete_for_bucket_returns_true_when_all_transferred() {
+        let mut state = State::default();
+        let item1 = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: true,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 100.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        let item2 = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: true,
+            name: "file2.txt".into(),
+            path: "path/to/file2.txt".into(),
+            progress: 100.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        state.add_local_selected_item(item1);
+        state.add_local_selected_item(item2);
+        assert!(state.all_uploads_complete_for_bucket("test-bucket"));
+    }
+
+    #[test]
+    fn all_uploads_complete_for_bucket_returns_false_when_pending() {
+        let mut state = State::default();
+        let item1 = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: true,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 100.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        let item2 = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file2.txt".into(),
+            path: "path/to/file2.txt".into(),
+            progress: 50.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        state.add_local_selected_item(item1);
+        state.add_local_selected_item(item2);
+        assert!(!state.all_uploads_complete_for_bucket("test-bucket"));
+    }
+
+    #[test]
+    fn all_uploads_complete_for_bucket_ignores_other_buckets() {
+        let mut state = State::default();
+        let item1 = LocalSelectedItem {
+            destination_bucket: "bucket-a".into(),
+            destination_path: "".to_string(),
+            transferred: true,
+            name: "file1.txt".into(),
+            path: "path/to/file1.txt".into(),
+            progress: 100.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        let item2 = LocalSelectedItem {
+            destination_bucket: "bucket-b".into(),
+            destination_path: "".to_string(),
+            transferred: false,
+            name: "file2.txt".into(),
+            path: "path/to/file2.txt".into(),
+            progress: 50.0,
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            error: None,
+        };
+        state.add_local_selected_item(item1);
+        state.add_local_selected_item(item2);
+        // bucket-a should be complete even though bucket-b is not
+        assert!(state.all_uploads_complete_for_bucket("bucket-a"));
+        assert!(!state.all_uploads_complete_for_bucket("bucket-b"));
+    }
+
+    #[test]
+    fn all_downloads_complete_for_directory_returns_true_when_all_transferred() {
+        let mut state = State::default();
+        let item1 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/downloads".into(),
+            transferred: true,
+            s3_creds: FileCredential::default(),
+            progress: 100.0,
+            children: None,
+            error: None,
+        };
+        let item2 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file2.txt".into(),
+            path: Some("path/to/file2.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/downloads".into(),
+            transferred: true,
+            s3_creds: FileCredential::default(),
+            progress: 100.0,
+            children: None,
+            error: None,
+        };
+        state.add_s3_selected_item(item1);
+        state.add_s3_selected_item(item2);
+        assert!(state.all_downloads_complete_for_directory("/home/user/downloads"));
+    }
+
+    #[test]
+    fn all_downloads_complete_for_directory_returns_false_when_pending() {
+        let mut state = State::default();
+        let item1 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/downloads".into(),
+            transferred: true,
+            s3_creds: FileCredential::default(),
+            progress: 100.0,
+            children: None,
+            error: None,
+        };
+        let item2 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file2.txt".into(),
+            path: Some("path/to/file2.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/downloads".into(),
+            transferred: false,
+            s3_creds: FileCredential::default(),
+            progress: 50.0,
+            children: None,
+            error: None,
+        };
+        state.add_s3_selected_item(item1);
+        state.add_s3_selected_item(item2);
+        assert!(!state.all_downloads_complete_for_directory("/home/user/downloads"));
+    }
+
+    #[test]
+    fn all_downloads_complete_for_directory_ignores_other_directories() {
+        let mut state = State::default();
+        let item1 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file1.txt".into(),
+            path: Some("path/to/file1.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/dir-a".into(),
+            transferred: true,
+            s3_creds: FileCredential::default(),
+            progress: 100.0,
+            children: None,
+            error: None,
+        };
+        let item2 = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file2.txt".into(),
+            path: Some("path/to/file2.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/home/user/dir-b".into(),
+            transferred: false,
+            s3_creds: FileCredential::default(),
+            progress: 50.0,
+            children: None,
+            error: None,
+        };
+        state.add_s3_selected_item(item1);
+        state.add_s3_selected_item(item2);
+        // dir-a should be complete even though dir-b is not
+        assert!(state.all_downloads_complete_for_directory("/home/user/dir-a"));
+        assert!(!state.all_downloads_complete_for_directory("/home/user/dir-b"));
     }
 }

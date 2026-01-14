@@ -43,6 +43,7 @@ impl From<&State> for Props {
                     "r".to_string(),
                     "run currently selected transfers".to_string(),
                 ],
+                vec!["F5".to_string(), "refresh current view".to_string()],
                 vec!["q".to_string(), "quit the application".to_string()],
                 vec!["?".to_string(), "this help page".to_string()],
             ],
