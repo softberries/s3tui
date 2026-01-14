@@ -6,6 +6,7 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::sorting::{sort_items, SortColumn, SortState};
 use crate::model::transfer_state::TransferState;
 use crate::model::upload_progress_item::UploadProgressItem;
 use crate::settings::file_credentials::FileCredential;
@@ -52,6 +53,8 @@ pub struct State {
     pub local_delete_error: Option<LocalError>,
     pub s3_delete_error: Option<S3Error>,
     pub create_bucket_error: Option<S3Error>,
+    pub s3_sort_state: SortState,
+    pub local_sort_state: SortState,
 }
 
 impl State {
@@ -176,6 +179,7 @@ impl State {
         bucket_list: Vec<S3DataItem>,
     ) {
         self.s3_data = bucket_list;
+        sort_items(&mut self.s3_data, &self.s3_sort_state);
         self.s3_loading = false;
         self.current_s3_bucket = bucket;
         self.current_s3_path = prefix;
@@ -188,6 +192,7 @@ impl State {
 
     pub fn update_files(&mut self, path: String, files: Vec<LocalDataItem>) {
         self.local_data = files;
+        sort_items(&mut self.local_data, &self.local_sort_state);
         self.current_local_path = path;
     }
 
@@ -213,6 +218,16 @@ impl State {
 
     pub fn set_s3_list_recursive_loading(&mut self, loading: bool) {
         self.s3_list_recursive_loading = loading;
+    }
+
+    pub fn sort_s3_data(&mut self, column: SortColumn) {
+        self.s3_sort_state.set_column(column);
+        sort_items(&mut self.s3_data, &self.s3_sort_state);
+    }
+
+    pub fn sort_local_data(&mut self, column: SortColumn) {
+        self.local_sort_state.set_column(column);
+        sort_items(&mut self.local_data, &self.local_sort_state);
     }
 
     pub fn add_s3_selected_item(&mut self, item: S3SelectedItem) {

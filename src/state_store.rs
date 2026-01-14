@@ -461,6 +461,14 @@ impl StateStore {
                                 state.local_delete_error = None;
                                 state.create_bucket_error = None;
                                 self.state_tx.send(state.clone())?;
+                            },
+                            Action::SortS3 { column } => {
+                                state.sort_s3_data(column);
+                                self.state_tx.send(state.clone())?;
+                            },
+                            Action::SortLocal { column } => {
+                                state.sort_local_data(column);
+                                self.state_tx.send(state.clone())?;
                             }
                         },
                         Some(item) = selected_s3_transfers_rx.recv() => {

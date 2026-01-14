@@ -1,6 +1,7 @@
 //! This module provides list of all possible actions which can be executed on the UI
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::sorting::SortColumn;
 use crate::model::state::ActivePage;
 use crate::settings::file_credentials::FileCredential;
 
@@ -47,5 +48,11 @@ pub enum Action {
     },
     ClearDeletionErrors,
     RunTransfers,
+    SortS3 {
+        column: SortColumn,
+    },
+    SortLocal {
+        column: SortColumn,
+    },
     Exit,
 }

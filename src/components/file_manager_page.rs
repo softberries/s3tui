@@ -7,6 +7,7 @@ use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::sorting::{SortColumn, SortState};
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -37,6 +38,8 @@ struct Props {
     s3_delete_error: Option<S3Error>,
     local_delete_error: Option<LocalError>,
     create_bucket_error: Option<S3Error>,
+    s3_sort_state: SortState,
+    local_sort_state: SortState,
 }
 
 impl From<&State> for Props {
@@ -60,6 +63,8 @@ impl From<&State> for Props {
             s3_delete_error: st.s3_delete_error,
             local_delete_error: st.local_delete_error,
             create_bucket_error: st.create_bucket_error,
+            s3_sort_state: st.s3_sort_state,
+            local_sort_state: st.local_sort_state,
         }
     }
 }
@@ -232,12 +237,17 @@ impl FileManagerPage {
     }
 
     fn get_local_table(&self, focus_color: Color) -> Table<'_> {
-        let header = Row::new(vec!["Name", "Size", "Type"])
-            .fg(focus_color)
-            .bold()
-            .underlined()
-            .height(1)
-            .bottom_margin(0);
+        let sort_state = &self.props.local_sort_state;
+        let header = Row::new(vec![
+            format!("Name{}", sort_state.indicator(SortColumn::Name)),
+            format!("Size{}", sort_state.indicator(SortColumn::Size)),
+            format!("Type{}", sort_state.indicator(SortColumn::Type)),
+        ])
+        .fg(focus_color)
+        .bold()
+        .underlined()
+        .height(1)
+        .bottom_margin(0);
         let rows = self
             .props
             .local_data
@@ -362,12 +372,17 @@ impl FileManagerPage {
     }
 
     fn get_s3_table(&self, focus_color: Color) -> Table<'_> {
-        let header = Row::new(vec!["Name", "Size", "Type"])
-            .fg(focus_color)
-            .bold()
-            .underlined()
-            .height(1)
-            .bottom_margin(0);
+        let sort_state = &self.props.s3_sort_state;
+        let header = Row::new(vec![
+            format!("Name{}", sort_state.indicator(SortColumn::Name)),
+            format!("Size{}", sort_state.indicator(SortColumn::Size)),
+            format!("Type{}", sort_state.indicator(SortColumn::Type)),
+        ])
+        .fg(focus_color)
+        .bold()
+        .underlined()
+        .height(1)
+        .bottom_margin(0);
         let rows = self
             .props
             .s3_data
@@ -1010,6 +1025,42 @@ impl Component for FileManagerPage {
                 }
                 KeyCode::F(5) => {
                     self.handle_refresh();
+                }
+                KeyCode::F(1) => {
+                    // Sort by name
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Name,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Name,
+                        });
+                    }
+                }
+                KeyCode::F(2) => {
+                    // Sort by size
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Size,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Size,
+                        });
+                    }
+                }
+                KeyCode::F(3) => {
+                    // Sort by type
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Type,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Type,
+                        });
+                    }
                 }
                 _ => {}
             }

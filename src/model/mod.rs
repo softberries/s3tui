@@ -9,6 +9,7 @@ pub mod local_selected_item;
 pub mod navigation_state;
 pub mod s3_data_item;
 pub mod s3_selected_item;
+pub mod sorting;
 pub mod state;
 pub mod transfer_item;
 pub mod transfer_state;
