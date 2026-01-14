@@ -99,7 +99,7 @@ Make sure there is a new line at the end and there are no leading spaces on the 
 
 3. **Installation from crates.io**:
     - Ensure you have Rust and `cargo` installed.
-    - Install with cargo
+    - Install/Upgrade with cargo
     ```bash
       cargo install s3tui
     ```
