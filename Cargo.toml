@@ -1,6 +1,6 @@
 [package]
 name = "s3tui"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Krzysztof Grajek <krzysztof.grajek@softwaremill.com>"]
 edition = "2021"
 description = "Simple TUI application for multiple s3 account operations"
