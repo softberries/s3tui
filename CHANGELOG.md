@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- Fix refresh on s3 after transfer, add F5 as manual refresh action([34438cf](https://github.com/softberries/s3tui/commit/34438cf719fde977fe54a78e5b036d870ae94fb6))
+
+
+### Bug Fixes
+
 - Fix progress reporting on transfers component([07cf191](https://github.com/softberries/s3tui/commit/07cf191a3d5bc50487ede00e7a0c4964f770796b))
 
 
