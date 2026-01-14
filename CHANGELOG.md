@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
+- Bump minor version([4ae6f1e](https://github.com/softberries/s3tui/commit/4ae6f1e65e3a48f3c8bda6e774153eb88d4b6791))
+
+- Added sorting([b9fe635](https://github.com/softberries/s3tui/commit/b9fe6352ea02e0917745907eb45a743ada0f2fed))
+
+
+### Features
+
 - Add sorting on s3 and local components by name (f1), size (f2) and type (f3)([f2730bd](https://github.com/softberries/s3tui/commit/f2730bd8679e06ae2658a9856650ad4282161d00))
 
 
