@@ -1,4 +1,4 @@
-use crate::model::has_children::HasChildren;
+use crate::model::has_children::{HasChildren, HasProgress};
 use crate::model::local_data_item::LocalDataItem;
 use crate::settings::file_credentials::FileCredential;
 use std::fs;
@@ -125,6 +125,12 @@ impl HasChildren for LocalSelectedItem {
 
     fn take_children(self) -> Vec<Self> {
         self.children.unwrap_or_default()
+    }
+}
+
+impl HasProgress for LocalSelectedItem {
+    fn progress(&self) -> f64 {
+        self.progress
     }
 }
 

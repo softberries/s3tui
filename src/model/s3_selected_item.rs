@@ -1,4 +1,4 @@
-use crate::model::has_children::HasChildren;
+use crate::model::has_children::{HasChildren, HasProgress};
 use crate::model::s3_data_item::S3DataItem;
 use crate::settings::file_credentials::FileCredential;
 
@@ -77,6 +77,12 @@ impl HasChildren for S3SelectedItem {
 
     fn take_children(self) -> Vec<Self> {
         self.children.unwrap_or_default()
+    }
+}
+
+impl HasProgress for S3SelectedItem {
+    fn progress(&self) -> f64 {
+        self.progress
     }
 }
 

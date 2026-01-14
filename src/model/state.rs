@@ -1,5 +1,6 @@
 //! This module provides functionality for keeping the application state
 use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::has_children::calculate_overall_progress;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
@@ -93,7 +94,7 @@ impl State {
                     }
                 }
                 // Recalculate parent progress based on children
-                it.progress = Self::calculate_overall_progress_s3(children);
+                it.progress = calculate_overall_progress(children);
                 // Parent is only transferred when ALL children are transferred
                 it.transferred = children.iter().all(|c| c.transferred);
             }
@@ -122,7 +123,7 @@ impl State {
                     }
                 }
                 // Recalculate parent progress based on children
-                it.progress = Self::calculate_overall_progress_local(children);
+                it.progress = calculate_overall_progress(children);
                 // Parent is only transferred when ALL children are transferred
                 it.transferred = children.iter().all(|c| c.transferred);
             }
@@ -286,7 +287,7 @@ impl State {
                         child.progress = progress_item.progress;
                     }
                 }
-                item.progress = Self::calculate_overall_progress_local(children);
+                item.progress = calculate_overall_progress(children);
             }
         }
     }
@@ -318,32 +319,8 @@ impl State {
                         child.progress = progress_item.progress;
                     }
                 }
-                item.progress = Self::calculate_overall_progress_s3(children);
+                item.progress = calculate_overall_progress(children);
             }
-        }
-    }
-
-    fn calculate_overall_progress_s3(items: &[S3SelectedItem]) -> f64 {
-        if items.is_empty() {
-            return 0.0;
-        }
-        let all_progress: f64 = items.iter().map(|i| i.progress).sum();
-        if all_progress > 0.0 {
-            all_progress / items.len() as f64
-        } else {
-            0.0
-        }
-    }
-
-    fn calculate_overall_progress_local(items: &[LocalSelectedItem]) -> f64 {
-        if items.is_empty() {
-            return 0.0;
-        }
-        let all_progress: f64 = items.iter().map(|i| i.progress).sum();
-        if all_progress > 0.0 {
-            all_progress / items.len() as f64
-        } else {
-            0.0
         }
     }
 
