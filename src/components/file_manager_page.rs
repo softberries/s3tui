@@ -339,7 +339,7 @@ impl FileManagerPage {
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
-            Paragraph::new("| Press 'l' to see the transfers list,'s' to select s3 account ")
+            Paragraph::new("| Press '?' for help")
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)

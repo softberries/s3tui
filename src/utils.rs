@@ -2,6 +2,7 @@ use color_eyre::eyre;
 use crossterm::cursor;
 use crossterm::event::{DisableBracketedPaste, DisableMouseCapture};
 use crossterm::terminal::LeaveAlternateScreen;
+use std::io::LineWriter;
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
@@ -132,6 +133,9 @@ pub fn initialize_logging() -> eyre::Result<()> {
     std::fs::create_dir_all(directory.clone())?;
     let log_path = directory.join(LOG_FILE.clone());
     let log_file = std::fs::File::create(log_path)?;
+    // Wrap in LineWriter to ensure logs are flushed after each line,
+    // then in Mutex for thread-safe access required by tracing-subscriber
+    let log_file = std::sync::Mutex::new(LineWriter::new(log_file));
     std::env::set_var(
         "RUST_LOG",
         std::env::var("RUST_LOG")

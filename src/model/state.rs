@@ -82,19 +82,20 @@ impl State {
                 it.error.clone_from(&item.error);
             }
             if let Some(children) = it.children.as_mut() {
-                let mut all_transferred = true;
                 for itc in children.iter_mut() {
-                    if (itc.name == item.name && item.error.is_none()) || itc.transferred {
+                    if itc.name == item.name && item.error.is_none() {
                         itc.transferred = true;
                         itc.progress = 100f64;
                     } else if itc.name == item.name && item.error.is_some() {
                         itc.transferred = false;
                         itc.progress = 0f64;
                         itc.error.clone_from(&item.error);
-                        all_transferred = false
                     }
                 }
-                it.transferred = all_transferred;
+                // Recalculate parent progress based on children
+                it.progress = Self::calculate_overall_progress_s3(children);
+                // Parent is only transferred when ALL children are transferred
+                it.transferred = children.iter().all(|c| c.transferred);
             }
         }
     }
@@ -110,19 +111,20 @@ impl State {
                 it.error.clone_from(&item.error);
             }
             if let Some(children) = it.children.as_mut() {
-                let mut all_transferred = true;
                 for itc in children.iter_mut() {
-                    if (itc.name == item.name && item.error.is_none()) || itc.transferred {
+                    if itc.name == item.name && item.error.is_none() {
                         itc.transferred = true;
                         itc.progress = 100f64;
                     } else if itc.name == item.name && item.error.is_some() {
                         itc.transferred = false;
                         itc.progress = 0f64;
                         itc.error.clone_from(&item.error);
-                        all_transferred = false;
                     }
                 }
-                it.transferred = all_transferred;
+                // Recalculate parent progress based on children
+                it.progress = Self::calculate_overall_progress_local(children);
+                // Parent is only transferred when ALL children are transferred
+                it.transferred = children.iter().all(|c| c.transferred);
             }
         }
     }
@@ -226,30 +228,51 @@ impl State {
             Err(_) => return,
         };
         let host = url.host_str().unwrap_or_default();
-        let path_segments = url
+        let path_segments: Vec<&str> = url
             .path_segments()
             .map(|c| c.collect::<Vec<_>>())
             .unwrap_or_default();
-        let name = path_segments.last().unwrap_or(&"");
+
+        // Detect URL style: path-style vs virtual-hosted-style
+        // Path-style: https://s3.region.amazonaws.com/bucket/key
+        // Virtual-hosted: https://bucket.s3.region.amazonaws.com/key
+        let host_parts: Vec<&str> = host.split('.').collect();
+        let is_path_style = host_parts.first().map(|s| s.starts_with("s3")).unwrap_or(false);
+
+        let (bucket_name, name) = if is_path_style {
+            // Path-style: bucket is first path segment, key is the rest
+            let bucket = path_segments.first().unwrap_or(&"");
+            let key = path_segments.last().unwrap_or(&"");
+            (*bucket, *key)
+        } else {
+            // Virtual-hosted-style: bucket is first host segment
+            let bucket = host_parts.first().unwrap_or(&"");
+            let key = path_segments.last().unwrap_or(&"");
+            (*bucket, *key)
+        };
         let decoded_name = decode_url_safe(name);
 
-        // Assume bucket name is the first segment of the host
-        let bucket_parts: Vec<&str> = host.split('.').collect();
-        let bucket_name = bucket_parts.first().unwrap_or(&"");
-
         for item in &mut self.local_selected_items {
+            // Skip already-transferred items to avoid race conditions with late progress updates
+            if item.transferred {
+                continue;
+            }
+
             if item.children.is_none() {
                 if item.destination_bucket == *bucket_name && item.name == decoded_name {
                     item.progress = progress_item.progress;
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
+                    // Skip already-transferred children
+                    if child.transferred {
+                        continue;
+                    }
                     if child.destination_bucket == *bucket_name && child.name == decoded_name {
                         child.progress = progress_item.progress;
                     }
                 }
                 item.progress = Self::calculate_overall_progress_local(children);
-                item.transferred = item.progress == 100f64;
             }
         }
     }
@@ -258,18 +281,30 @@ impl State {
         let target_bucket = Some(progress_item.bucket.clone());
 
         for item in &mut self.s3_selected_items {
+            // Use path if available, otherwise fall back to name (matches download_item logic)
+            let item_key = item.path.as_ref().unwrap_or(&item.name);
+
+            // Skip already-transferred items to avoid race conditions with late progress updates
+            if item.transferred {
+                continue;
+            }
+
             if item.children.is_none() {
-                if item.name == progress_item.name && item.bucket == target_bucket {
+                if item_key == &progress_item.name && item.bucket == target_bucket {
                     item.progress = progress_item.progress;
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
-                    if child.name == progress_item.name && child.bucket == target_bucket {
+                    // Skip already-transferred children
+                    if child.transferred {
+                        continue;
+                    }
+                    let child_key = child.path.as_ref().unwrap_or(&child.name);
+                    if child_key == &progress_item.name && child.bucket == target_bucket {
                         child.progress = progress_item.progress;
                     }
                 }
                 item.progress = Self::calculate_overall_progress_s3(children);
-                item.transferred = item.progress == 100f64;
             }
         }
     }
@@ -671,7 +706,7 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: true,
+            transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
             children: None,
@@ -679,10 +714,11 @@ mod tests {
         };
 
         state.s3_selected_items.push(item.clone());
+        // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
         let progress_item = DownloadProgressItem {
             progress: 0.5,
             bucket: "test-bucket".to_string(),
-            name: "file1.txt".into(),
+            name: "path/to/file1.txt".into(),
         };
         state.update_progress_on_selected_s3_item(&progress_item);
 
@@ -767,17 +803,18 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: true,
+            transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
             children: None,
             error: None,
         };
         state.s3_selected_items = vec![selected_item];
+        // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
         let progress_item = DownloadProgressItem {
             progress: 50.0,
             bucket: "test-bucket".into(),
-            name: "file1.txt".into(),
+            name: "path/to/file1.txt".into(),
         };
         state.update_s3_item_with_progress(&progress_item);
         assert_eq!(state.s3_selected_items[0].progress, 50.0);
@@ -793,7 +830,7 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: true,
+            transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
             children: None,
@@ -806,17 +843,18 @@ mod tests {
             is_directory: false,
             is_bucket: false,
             destination_dir: "path/to/dest".into(),
-            transferred: true,
+            transferred: false,
             s3_creds: FileCredential::default(),
             progress: 0.0,
             children: Some(vec![child.clone()]),
             error: None,
         };
         state.s3_selected_items = vec![selected_item];
+        // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
         let progress_item = DownloadProgressItem {
             progress: 50.0,
             bucket: "test-bucket".into(),
-            name: "file1.txt".into(),
+            name: "path/to/file1.txt".into(),
         };
         state.update_s3_item_with_progress(&progress_item);
         assert_eq!(

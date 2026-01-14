@@ -258,13 +258,26 @@ impl S3DataFetcher {
             Ok(mut object) => {
                 let mut byte_count = 0_usize;
                 let total = head_obj.content_length.unwrap_or(0i64);
+                let progress_name = item.path.clone().unwrap_or(item.name.clone());
+                tracing::debug!(
+                    "Starting download: name={}, bucket={}, total_bytes={}",
+                    progress_name,
+                    bucket,
+                    total
+                );
                 while let Some(bytes) = object.body.try_next().await? {
                     let bytes_len = bytes.len();
                     file.write_all(&bytes)?;
                     byte_count += bytes_len;
                     let progress = Self::calculate_download_percentage(total, byte_count);
+                    tracing::debug!(
+                        "Download chunk: bytes={}, total_bytes={}, progress={}",
+                        bytes_len,
+                        byte_count,
+                        progress
+                    );
                     let download_progress_item = DownloadProgressItem {
-                        name: item.path.clone().unwrap_or(item.name.clone())    ,
+                        name: progress_name.clone(),
                         bucket: bucket.clone(),
                         progress,
                     };
