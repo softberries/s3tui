@@ -1,8 +1,10 @@
 //! This module provides functionality for interactions between UI and state
 use crate::model::action::Action;
 use crate::model::download_progress_item::DownloadProgressItem;
+use crate::model::error::{LocalError, S3Error};
 use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::transfer_state::TransferState;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
@@ -62,13 +64,8 @@ impl StateStore {
                         }
                         Err(e) => {
                             tracing::error!("Failed to download data: {}",  e);
-                            let orig_item = item.clone();
-                            let errored_item = S3SelectedItem {
-                                error: Some(e.to_string()),
-                                transferred: false,
-                                progress: 0f64,
-                                ..orig_item
-                            };
+                            let mut errored_item = item.clone();
+                            errored_item.transfer_state = TransferState::Failed(e.to_string());
                             if tx.send(errored_item).is_err() {
                                 tracing::error!("Failed to send item in error");
                             }
@@ -104,13 +101,8 @@ impl StateStore {
                         }
                         Err(e) => {
                             tracing::error!("Failed to upload data: {}", e);
-                            let orig_item = item.clone();
-                            let errored_item = LocalSelectedItem {
-                                error: Some(e.to_string()),
-                                transferred: false,
-                                progress: 0f64,
-                                ..orig_item
-                            };
+                            let mut errored_item = item.clone();
+                            errored_item.transfer_state = TransferState::Failed(e.to_string());
                             if local_tx.send(errored_item).is_err() {
                                 tracing::error!("Failed to send item in error");
                             }
@@ -240,7 +232,7 @@ impl StateStore {
         &self,
         item: LocalSelectedItem,
         local_data_fetcher: LocalDataFetcher,
-        local_deleted_tx: UnboundedSender<Option<String>>,
+        local_deleted_tx: UnboundedSender<Option<LocalError>>,
     ) {
         let path = item.path.clone();
         if item.is_directory {
@@ -251,7 +243,7 @@ impl StateStore {
                     }
                     Err(e) => {
                         tracing::error!("Failed to delete local directory: {}", e);
-                        let _ = local_deleted_tx.send(Some(e.to_string()));
+                        let _ = local_deleted_tx.send(Some(LocalError::from_message(e.to_string())));
                     }
                 }
             });
@@ -263,7 +255,7 @@ impl StateStore {
                     }
                     Err(e) => {
                         tracing::error!("Failed to delete local file: {}", e);
-                        let _ = local_deleted_tx.send(Some(e.to_string()));
+                        let _ = local_deleted_tx.send(Some(LocalError::from_message(e.to_string())));
                     }
                 }
             });
@@ -274,7 +266,7 @@ impl StateStore {
         &self,
         item: S3SelectedItem,
         s3_data_fetcher: S3DataFetcher,
-        s3_delete_tx: UnboundedSender<Option<String>>,
+        s3_delete_tx: UnboundedSender<Option<S3Error>>,
     ) {
         let items_with_children = flatten_items(vec![item]);
         let semaphore = Arc::new(Semaphore::new(S3_OPERATIONS_CONCURRENCY_LEVEL)); // Adjust the number based on system capabilities
@@ -294,13 +286,12 @@ impl StateStore {
                         )
                         .await
                     {
-                        Ok(data) => {
-                            let _ = delete_tx.send(data);
+                        Ok(_) => {
+                            let _ = delete_tx.send(None);
                         }
                         Err(e) => {
                             tracing::error!("Failed to delete S3 data: {}", e);
-                            let _ =
-                                delete_tx.send(Some(format!("Failed to delete S3 data: {}", e)));
+                            let _ = delete_tx.send(Some(S3Error::from_message(e.to_string())));
                         }
                     }
                 });
@@ -312,19 +303,19 @@ impl StateStore {
         &self,
         name: String,
         s3_data_fetcher: S3DataFetcher,
-        create_bucket_tx: UnboundedSender<Option<String>>,
+        create_bucket_tx: UnboundedSender<Option<S3Error>>,
     ) {
         tokio::spawn(async move {
             match s3_data_fetcher
                 .create_bucket(name.clone(), s3_data_fetcher.default_region.clone())
                 .await
             {
-                Ok(data) => {
-                    let _ = create_bucket_tx.send(data);
+                Ok(_) => {
+                    let _ = create_bucket_tx.send(None);
                 }
                 Err(e) => {
                     tracing::error!("Failed to create S3 bucket: {}", e);
-                    let _ = create_bucket_tx.send(Some(format!("Failed to create bucket: {}", e)));
+                    let _ = create_bucket_tx.send(Some(S3Error::from_message(e.to_string())));
                 }
             }
         });
@@ -357,16 +348,16 @@ impl StateStore {
             mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
         let (s3_full_list_tx, mut s3_full_list_rx) =
             mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
-        let (s3_deleted_tx, mut s3_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
+        let (s3_deleted_tx, mut s3_deleted_rx) = mpsc::unbounded_channel::<Option<S3Error>>();
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
-        let (local_deleted_tx, mut local_deleted_rx) = mpsc::unbounded_channel::<Option<String>>();
+        let (local_deleted_tx, mut local_deleted_rx) = mpsc::unbounded_channel::<Option<LocalError>>();
         let (selected_s3_transfers_tx, mut selected_s3_transfers_rx) =
             mpsc::unbounded_channel::<S3SelectedItem>();
         let (selected_local_transfers_tx, mut selected_local_transfers_rx) =
             mpsc::unbounded_channel::<LocalSelectedItem>();
         let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<UploadProgressItem>();
         let (download_tx, mut download_rx) = mpsc::unbounded_channel::<DownloadProgressItem>();
-        let (create_bucket_tx, mut create_bucket_rx) = mpsc::unbounded_channel::<Option<String>>();
+        let (create_bucket_tx, mut create_bucket_rx) = mpsc::unbounded_channel::<Option<S3Error>>();
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone())
             .await;
@@ -466,9 +457,9 @@ impl StateStore {
                                 self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
                             },
                             Action::ClearDeletionErrors => {
-                                state.s3_delete_state = None;
-                                state.local_delete_state = None;
-                                state.create_bucket_state = None;
+                                state.s3_delete_error = None;
+                                state.local_delete_error = None;
+                                state.create_bucket_error = None;
                                 self.state_tx.send(state.clone())?;
                             }
                         },
@@ -515,16 +506,16 @@ impl StateStore {
                                 self.state_tx.send(state.clone())?;
                             }
                         },
-                        Some(error_str) = local_deleted_rx.recv() => {
-                            state.set_local_delete_error(error_str);
+                        Some(error) = local_deleted_rx.recv() => {
+                            state.set_local_delete_error(error);
                             self.state_tx.send(state.clone())?;
                         },
-                        Some(error_str) = s3_deleted_rx.recv() => {
-                            state.set_s3_delete_error(error_str);
+                        Some(error) = s3_deleted_rx.recv() => {
+                            state.set_s3_delete_error(error);
                             self.state_tx.send(state.clone())?;
                         },
-                        Some(error_str) = create_bucket_rx.recv() => {
-                            state.set_create_bucket_error(error_str);
+                        Some(error) = create_bucket_rx.recv() => {
+                            state.set_create_bucket_error(error);
                             self.state_tx.send(state.clone())?;
                         }
 

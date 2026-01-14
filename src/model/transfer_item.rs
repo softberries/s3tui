@@ -1,5 +1,6 @@
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::transfer_state::TransferState;
 use crate::settings::file_credentials::FileCredential;
 
 /// Represents an item (file/directory/bucket) on your transfers list
@@ -10,15 +11,18 @@ pub struct TransferItem {
     pub name: String,
     pub path: Option<String>,
     pub destination_dir: String,
-    pub transferred: bool,
     pub s3_creds: FileCredential,
-    pub progress: f64,
-    pub error: Option<String>,
+    pub transfer_state: TransferState,
 }
 
 impl TransferItem {
     pub fn to_columns(&self) -> Vec<String> {
-        let progress = format!("{:.2}%", self.progress);
+        let progress = format!("{:.2}%", self.transfer_state.progress());
+        let error = self
+            .transfer_state
+            .error()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         vec![
             self.direction.clone(),
             self.bucket.clone(),
@@ -26,21 +30,19 @@ impl TransferItem {
             self.destination_dir.clone(),
             self.s3_creds.name.clone(),
             progress,
-            self.error.clone().unwrap_or("".to_string()),
+            error,
         ]
     }
 
     pub fn from_s3_selected_item(item: S3SelectedItem) -> TransferItem {
         TransferItem {
             direction: "↓".into(),
-            bucket: item.bucket.unwrap_or("".into()),
+            bucket: item.bucket.unwrap_or_default(),
             name: item.name,
             path: item.path,
             destination_dir: item.destination_dir,
-            transferred: item.transferred,
             s3_creds: item.s3_creds,
-            progress: item.progress,
-            error: item.error,
+            transfer_state: item.transfer_state,
         }
     }
 
@@ -51,11 +53,19 @@ impl TransferItem {
             name: item.name,
             path: Some(item.path),
             destination_dir: item.destination_path,
-            transferred: item.transferred,
             s3_creds: item.s3_creds,
-            progress: item.progress,
-            error: item.error,
+            transfer_state: item.transfer_state,
         }
+    }
+
+    /// Returns true if the transfer has completed successfully
+    pub fn is_transferred(&self) -> bool {
+        self.transfer_state.is_completed()
+    }
+
+    /// Returns the error message if the transfer failed
+    pub fn error(&self) -> Option<&str> {
+        self.transfer_state.error()
     }
 }
 

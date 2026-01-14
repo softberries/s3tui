@@ -1,4 +1,4 @@
-//! Trait and utilities for items that can have nested children
+//! Traits and utilities for transfer items
 
 /// Trait for items that can contain child items of the same type
 pub trait HasChildren: Clone {
@@ -11,6 +11,25 @@ pub trait HasChildren: Clone {
     /// Returns true if this item has no children (is a single file)
     fn is_leaf(&self) -> bool {
         self.children().is_none()
+    }
+}
+
+/// Trait for items that track transfer progress
+pub trait HasProgress {
+    /// Returns the current progress percentage (0.0 to 100.0)
+    fn progress(&self) -> f64;
+}
+
+/// Calculates the average progress across a collection of items
+pub fn calculate_overall_progress<T: HasProgress>(items: &[T]) -> f64 {
+    if items.is_empty() {
+        return 0.0;
+    }
+    let total: f64 = items.iter().map(|i| i.progress()).sum();
+    if total > 0.0 {
+        total / items.len() as f64
+    } else {
+        0.0
     }
 }
 
@@ -117,5 +136,56 @@ mod tests {
 
         assert!(leaf.is_leaf());
         assert!(!parent.is_leaf());
+    }
+
+    #[derive(Clone)]
+    struct ProgressItem {
+        progress: f64,
+    }
+
+    impl HasProgress for ProgressItem {
+        fn progress(&self) -> f64 {
+            self.progress
+        }
+    }
+
+    #[test]
+    fn test_calculate_overall_progress_empty() {
+        let items: Vec<ProgressItem> = vec![];
+        assert_eq!(calculate_overall_progress(&items), 0.0);
+    }
+
+    #[test]
+    fn test_calculate_overall_progress_single_item() {
+        let items = vec![ProgressItem { progress: 50.0 }];
+        assert_eq!(calculate_overall_progress(&items), 50.0);
+    }
+
+    #[test]
+    fn test_calculate_overall_progress_multiple_items() {
+        let items = vec![
+            ProgressItem { progress: 25.0 },
+            ProgressItem { progress: 75.0 },
+        ];
+        assert_eq!(calculate_overall_progress(&items), 50.0);
+    }
+
+    #[test]
+    fn test_calculate_overall_progress_all_zero() {
+        let items = vec![
+            ProgressItem { progress: 0.0 },
+            ProgressItem { progress: 0.0 },
+        ];
+        assert_eq!(calculate_overall_progress(&items), 0.0);
+    }
+
+    #[test]
+    fn test_calculate_overall_progress_all_complete() {
+        let items = vec![
+            ProgressItem { progress: 100.0 },
+            ProgressItem { progress: 100.0 },
+            ProgressItem { progress: 100.0 },
+        ];
+        assert_eq!(calculate_overall_progress(&items), 100.0);
     }
 }

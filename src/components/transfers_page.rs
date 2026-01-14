@@ -211,9 +211,9 @@ impl TransfersPage {
     }
 
     fn get_row(&self, item: &TransferItem) -> Row<'_> {
-        if item.error.is_some() {
+        if item.error().is_some() {
             Row::new(item.to_columns().clone()).fg(Color::Red)
-        } else if item.transferred {
+        } else if item.is_transferred() {
             Row::new(item.to_columns().clone()).fg(Color::Blue)
         } else {
             Row::new(item.to_columns().clone())
@@ -224,8 +224,8 @@ impl TransfersPage {
         let s3_items = flatten_items(self.props.s3_selected_items.clone());
         let local_items = flatten_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.transferred).count()
-            + local_items.iter().filter(|i| i.transferred).count();
+        let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
+            + local_items.iter().filter(|i| i.is_transferred()).count();
         Paragraph::new(format!(" Transfers: {}/{}", to_transfer, transferred))
             .style(Style::default().fg(Color::White))
             .bg(Color::Blue)
@@ -282,7 +282,7 @@ impl TransfersPage {
                     .borders(Borders::ALL)
                     .title("Transfers List"),
             )
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .add_modifier(Modifier::REVERSED),
@@ -331,6 +331,7 @@ mod tests {
     use super::*;
     use crate::model::local_selected_item::LocalSelectedItem;
     use crate::model::s3_selected_item::S3SelectedItem;
+    use crate::model::transfer_state::TransferState;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     use tokio::sync::mpsc;
 
@@ -442,11 +443,9 @@ mod tests {
             is_directory: false,
             is_bucket: true,
             destination_dir: "".to_string(),
-            transferred: false,
             s3_creds: Default::default(),
-            progress: 0f64,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -465,11 +464,9 @@ mod tests {
             is_directory: false,
             is_bucket: true,
             destination_dir: "".to_string(),
-            transferred: false,
             s3_creds: Default::default(),
-            progress: 0f64,
             children: None,
-            error: Some("Error".into()),
+            transfer_state: TransferState::Failed("Error".into()),
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -491,11 +488,9 @@ mod tests {
             is_directory: false,
             is_bucket: true,
             destination_dir: "".to_string(),
-            transferred: true,
             s3_creds: Default::default(),
-            progress: 0f64,
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -513,14 +508,12 @@ mod tests {
         let item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -535,14 +528,12 @@ mod tests {
         let item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: true,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::Completed,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -560,14 +551,12 @@ mod tests {
         let item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: Some("Error".into()),
+            transfer_state: TransferState::Failed("Error".into()),
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);

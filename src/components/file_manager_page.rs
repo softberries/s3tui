@@ -1,5 +1,6 @@
 use crate::components::component::{Component, ComponentRender};
 use crate::model::action::Action;
+use crate::model::error::{LocalError, S3Error};
 use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
@@ -9,7 +10,6 @@ use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::block::Title;
 use ratatui::{prelude::*, widgets::*};
 use throbber_widgets_tui::Throbber;
 use tokio::sync::mpsc::UnboundedSender;
@@ -34,9 +34,9 @@ struct Props {
     current_s3_bucket: Option<String>,
     current_s3_path: String,
     current_s3_creds: FileCredential,
-    s3_delete_state: Option<String>,
-    local_delete_state: Option<String>,
-    create_bucket_state: Option<String>,
+    s3_delete_error: Option<S3Error>,
+    local_delete_error: Option<LocalError>,
+    create_bucket_error: Option<S3Error>,
 }
 
 impl From<&State> for Props {
@@ -57,9 +57,9 @@ impl From<&State> for Props {
             current_s3_bucket: st.current_s3_bucket,
             current_s3_path: st.current_s3_path.unwrap_or("/".to_string()),
             current_s3_creds: st.current_creds,
-            s3_delete_state: st.s3_delete_state,
-            local_delete_state: st.local_delete_state,
-            create_bucket_state: st.create_bucket_state,
+            s3_delete_error: st.s3_delete_error,
+            local_delete_error: st.local_delete_error,
+            create_bucket_error: st.create_bucket_error,
         }
     }
 }
@@ -95,28 +95,20 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Problem detected! |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Problem detected! |",
+                    )])),
             )
             .fg(Color::Red)
     }
@@ -128,36 +120,28 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("ok", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(block::Position::Bottom),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("ok", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left)),
             );
         input
     }
@@ -168,50 +152,39 @@ impl FileManagerPage {
         text_color: Color,
         show_buttons: bool,
     ) -> Paragraph<'_> {
-        let ok_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("ok", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Enter",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Right)
-            .position(block::Position::Bottom);
-        let cancel_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Esc",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Left)
-            .position(block::Position::Bottom);
-        let input = Paragraph::new(text)
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default());
+
+        if show_buttons {
+            block = block
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("ok", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Enter",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Right))
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Esc",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Left));
+        }
+
+        Paragraph::new(text)
             .style(Style::default().fg(text_color))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default())
-                    .title(if show_buttons {
-                        ok_button
-                    } else {
-                        Title::default()
-                    })
-                    .title(if show_buttons {
-                        cancel_button
-                    } else {
-                        Title::default()
-                    }),
-            );
-        input
+            .block(block)
     }
     fn make_bucket_name_input(&self) -> Paragraph<'_> {
         let scroll = self.input.visual_scroll(INPUT_SIZE);
@@ -222,43 +195,31 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("save", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Enter new bucket name |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("save", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Enter new bucket name |",
+                    )])),
             );
         input
     }
@@ -291,7 +252,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()
@@ -309,8 +270,8 @@ impl FileManagerPage {
         let s3_items = flatten_items(self.props.s3_selected_items.clone());
         let local_items = flatten_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.transferred).count()
-            + local_items.iter().filter(|i| i.transferred).count();
+        let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
+            + local_items.iter().filter(|i| i.is_transferred()).count();
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(
                 " Account: {} • Bucket: {} • Transfers: {}/{}",
@@ -421,7 +382,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()
@@ -892,9 +853,9 @@ impl Component for FileManagerPage {
     {
         let new_props = Props::from(state);
         FileManagerPage {
-            show_delete_error: state.s3_delete_state.is_some()
-                || state.local_delete_state.is_some(),
-            show_bucket_input: state.create_bucket_state.is_some(),
+            show_delete_error: state.s3_delete_error.is_some()
+                || state.local_delete_error.is_some(),
+            show_bucket_input: state.create_bucket_error.is_some(),
             props: Props {
                 s3_history: self.props.s3_history.clone(),
                 s3_table_state: self.props.s3_table_state.clone(),
@@ -1139,9 +1100,9 @@ impl ComponentRender<()> for FileManagerPage {
 
             frame.render_widget(Clear, area); //this clears out the background
             frame.render_widget(block, area);
-            if let Some(error) = self.props.create_bucket_state.clone() {
+            if let Some(ref error) = self.props.create_bucket_error {
                 let error_paragraph =
-                    Paragraph::new(format!("* {:?}", error)).style(Style::default().fg(Color::Red));
+                    Paragraph::new(format!("* {}", error)).style(Style::default().fg(Color::Red));
                 let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
                 frame.render_widget(Clear, error_rect);
                 frame.render_widget(error_paragraph, error_rect);
@@ -1201,12 +1162,12 @@ impl ComponentRender<()> for FileManagerPage {
             };
             frame.render_widget(block, area);
         } else if self.show_delete_error {
-            let possible_error = match (
-                self.props.s3_delete_state.clone(),
-                self.props.local_delete_state.clone(),
+            let possible_error: Option<String> = match (
+                &self.props.s3_delete_error,
+                &self.props.local_delete_error,
             ) {
-                (Some(err), None) => Some(err),
-                (None, Some(err)) => Some(err),
+                (Some(err), None) => Some(err.to_string()),
+                (None, Some(err)) => Some(err.to_string()),
                 _ => None,
             };
             if let Some(err) = possible_error {
