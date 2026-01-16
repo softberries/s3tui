@@ -469,6 +469,18 @@ impl StateStore {
                             Action::SortLocal { column } => {
                                 state.sort_local_data(column);
                                 self.state_tx.send(state.clone())?;
+                            },
+                            Action::SetSearchMode { active } => {
+                                state.set_search_mode(active);
+                                self.state_tx.send(state.clone())?;
+                            },
+                            Action::SetSearchQuery { query } => {
+                                state.set_search_query(query);
+                                self.state_tx.send(state.clone())?;
+                            },
+                            Action::ClearSearch => {
+                                state.clear_search();
+                                self.state_tx.send(state.clone())?;
                             }
                         },
                         Some(item) = selected_s3_transfers_rx.recv() => {

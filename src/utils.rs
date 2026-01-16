@@ -201,86 +201,6 @@ pub fn format_progress_bar(progress: f64, width: usize) -> String {
     format!("{}{}", "█".repeat(filled), "░".repeat(empty))
 }
 
-/// Formats bytes into a human-readable string
-///
-/// # Arguments
-/// * `bytes` - Number of bytes
-///
-/// # Example
-/// ```
-/// assert_eq!(format_bytes(1024), "1.00 KB");
-/// assert_eq!(format_bytes(1048576), "1.00 MB");
-/// ```
-/// Note: Currently unused - infrastructure for future byte-level tracking
-#[allow(dead_code)]
-pub fn format_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    const TB: u64 = GB * 1024;
-
-    if bytes >= TB {
-        format!("{:.2} TB", bytes as f64 / TB as f64)
-    } else if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-/// Formats a duration in seconds into a human-readable string
-///
-/// # Arguments
-/// * `seconds` - Duration in seconds
-///
-/// # Example
-/// ```
-/// assert_eq!(format_duration(65), "1m 5s");
-/// assert_eq!(format_duration(3661), "1h 1m 1s");
-/// ```
-/// Note: Currently unused - infrastructure for future byte-level tracking
-#[allow(dead_code)]
-pub fn format_duration(seconds: u64) -> String {
-    if seconds == 0 {
-        return "0s".to_string();
-    }
-
-    let hours = seconds / 3600;
-    let minutes = (seconds % 3600) / 60;
-    let secs = seconds % 60;
-
-    let mut parts = Vec::new();
-    if hours > 0 {
-        parts.push(format!("{}h", hours));
-    }
-    if minutes > 0 {
-        parts.push(format!("{}m", minutes));
-    }
-    if secs > 0 || parts.is_empty() {
-        parts.push(format!("{}s", secs));
-    }
-
-    parts.join(" ")
-}
-
-/// Formats transfer speed in bytes per second to human-readable format
-///
-/// # Arguments
-/// * `bytes_per_sec` - Speed in bytes per second
-///
-/// Note: Currently unused - infrastructure for future byte-level tracking
-#[allow(dead_code)]
-pub fn format_speed(bytes_per_sec: f64) -> String {
-    if bytes_per_sec < 1.0 {
-        return "0 B/s".to_string();
-    }
-    format!("{}/s", format_bytes(bytes_per_sec as u64))
-}
-
 /// Calculates transfer speed given bytes transferred and duration
 ///
 /// # Arguments
@@ -289,8 +209,6 @@ pub fn format_speed(bytes_per_sec: f64) -> String {
 ///
 /// # Returns
 /// Speed in bytes per second
-/// Note: Currently unused - infrastructure for future byte-level tracking
-#[allow(dead_code)]
 pub fn calculate_transfer_speed(bytes: u64, duration_secs: f64) -> f64 {
     if duration_secs <= 0.0 {
         return 0.0;
@@ -306,8 +224,6 @@ pub fn calculate_transfer_speed(bytes: u64, duration_secs: f64) -> f64 {
 ///
 /// # Returns
 /// ETA in seconds, or None if speed is zero
-/// Note: Currently unused - infrastructure for future byte-level tracking
-#[allow(dead_code)]
 pub fn calculate_eta(remaining_bytes: u64, speed: f64) -> Option<u64> {
     if speed <= 0.0 {
         return None;
@@ -360,64 +276,6 @@ mod tests {
     #[test]
     fn test_format_progress_bar_clamps_negative() {
         assert_eq!(format_progress_bar(-10.0, 10), "░░░░░░░░░░");
-    }
-
-    #[test]
-    fn test_format_bytes_small() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(512), "512 B");
-        assert_eq!(format_bytes(1023), "1023 B");
-    }
-
-    #[test]
-    fn test_format_bytes_kilobytes() {
-        assert_eq!(format_bytes(1024), "1.00 KB");
-        assert_eq!(format_bytes(1536), "1.50 KB");
-    }
-
-    #[test]
-    fn test_format_bytes_megabytes() {
-        assert_eq!(format_bytes(1048576), "1.00 MB");
-        assert_eq!(format_bytes(1572864), "1.50 MB");
-    }
-
-    #[test]
-    fn test_format_bytes_gigabytes() {
-        assert_eq!(format_bytes(1073741824), "1.00 GB");
-    }
-
-    #[test]
-    fn test_format_bytes_terabytes() {
-        assert_eq!(format_bytes(1099511627776), "1.00 TB");
-    }
-
-    #[test]
-    fn test_format_duration_zero() {
-        assert_eq!(format_duration(0), "0s");
-    }
-
-    #[test]
-    fn test_format_duration_seconds() {
-        assert_eq!(format_duration(45), "45s");
-    }
-
-    #[test]
-    fn test_format_duration_minutes_seconds() {
-        assert_eq!(format_duration(65), "1m 5s");
-        assert_eq!(format_duration(120), "2m");
-    }
-
-    #[test]
-    fn test_format_duration_hours() {
-        assert_eq!(format_duration(3661), "1h 1m 1s");
-        assert_eq!(format_duration(3600), "1h");
-    }
-
-    #[test]
-    fn test_format_speed() {
-        assert_eq!(format_speed(0.0), "0 B/s");
-        assert_eq!(format_speed(1024.0), "1.00 KB/s");
-        assert_eq!(format_speed(1048576.0), "1.00 MB/s");
     }
 
     #[test]

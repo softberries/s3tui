@@ -5,6 +5,7 @@ use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::state::{ActivePage, State};
 use crate::model::transfer_item::TransferItem;
+use crate::utils::format_progress_bar;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
@@ -254,15 +255,26 @@ impl TransfersPage {
                 .count();
         let pending = total - completed - failed - in_progress;
 
+        // Calculate overall progress percentage
+        let overall_progress = if total > 0 {
+            let total_progress: f64 = s3_items.iter().map(|i| i.transfer_state.progress()).sum::<f64>()
+                + local_items.iter().map(|i| i.transfer_state.progress()).sum::<f64>();
+            total_progress / total as f64
+        } else {
+            0.0
+        };
+
+        // Build status with progress bar
+        let progress_bar = format_progress_bar(overall_progress, 10);
         let status = if failed > 0 {
             format!(
-                " Done:{} Pending:{} Active:{} Failed:{} | Total: {}",
-                completed, pending, in_progress, failed, total
+                " {} {:.0}% | ✓{} done •{} pending ▶{} active ✗{} failed",
+                progress_bar, overall_progress, completed, pending, in_progress, failed
             )
         } else {
             format!(
-                " Done:{} Pending:{} Active:{} | Total: {}",
-                completed, pending, in_progress, total
+                " {} {:.0}% | ✓{} done •{} pending ▶{} active",
+                progress_bar, overall_progress, completed, pending, in_progress
             )
         };
 

@@ -1,3 +1,4 @@
+use crate::model::filtering::Filterable;
 use crate::model::sorting::{parse_size_to_bytes, Sortable};
 
 /// Represents an item (file/directory) on your local machine
@@ -46,6 +47,12 @@ impl Sortable for LocalDataItem {
 
     fn is_directory(&self) -> bool {
         self.is_directory
+    }
+}
+
+impl Filterable for LocalDataItem {
+    fn filterable_name(&self) -> &str {
+        &self.name
     }
 }
 
