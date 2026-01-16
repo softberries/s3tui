@@ -53,6 +53,7 @@ productivity with S3 services.
 - **Simultaneous Transfers**: Transfer multiple files at once, both to and from S3, thanks to multithreading
   capabilities powered by the [tokio](https://github.com/tokio-rs/tokio) library.
 - **Sortable File Lists**: Sort files by name, size, or type in both local and S3 panels using F1/F2/F3 keys.
+- **Search/Filter**: Quickly filter files by name using `/` key. Search is case-insensitive and filters both panels.
 - **Interactive Commands**:
     - `Tab,↔` - move between local and s3 panel
     - `s` - select account currently in use.
@@ -67,6 +68,7 @@ productivity with S3 services.
     - `F2` - Sort by size (press again to toggle ascending/descending).
     - `F3` - Sort by type (press again to toggle ascending/descending).
     - `F5` - Refresh current view.
+    - `/` - Search/filter files by name (Esc to clear filter).
     - `q` - Quit the application.
     - `?` - Access the help page with all available commands.
 - **Environment Configuration**: Customize settings via environment variables or utilize default settings compliant with

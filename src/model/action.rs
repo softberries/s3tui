@@ -54,5 +54,12 @@ pub enum Action {
     SortLocal {
         column: SortColumn,
     },
+    SetSearchMode {
+        active: bool,
+    },
+    SetSearchQuery {
+        query: String,
+    },
+    ClearSearch,
     Exit,
 }

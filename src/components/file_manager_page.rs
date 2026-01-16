@@ -1,6 +1,7 @@
 use crate::components::component::{Component, ComponentRender};
 use crate::model::action::Action;
 use crate::model::error::{LocalError, S3Error};
+use crate::model::filtering::filter_items;
 use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
@@ -40,6 +41,8 @@ struct Props {
     create_bucket_error: Option<S3Error>,
     s3_sort_state: SortState,
     local_sort_state: SortState,
+    search_query: String,
+    search_mode: bool,
 }
 
 impl From<&State> for Props {
@@ -65,6 +68,8 @@ impl From<&State> for Props {
             create_bucket_error: st.create_bucket_error,
             s3_sort_state: st.s3_sort_state,
             local_sort_state: st.local_sort_state,
+            search_query: st.search_query,
+            search_mode: st.search_mode,
         }
     }
 }
@@ -84,8 +89,11 @@ pub struct FileManagerPage {
     show_delete_multiple_confirmation: bool,
     show_download_confirmation: bool,
     show_delete_error: bool,
+    show_quit_confirmation: bool,
+    show_shortcuts_overlay: bool,
     default_navigation_state: NavigationState,
     input: Input,
+    search_input: Input,
 }
 
 impl FileManagerPage {
@@ -229,6 +237,139 @@ impl FileManagerPage {
         input
     }
 
+    fn make_quit_confirmation(&self) -> Paragraph<'_> {
+        Paragraph::new("Are you sure you want to quit?")
+            .style(Style::default().fg(Color::Yellow))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default())
+                    .title_top(Line::from(vec![Span::raw("| Quit |")]))
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("quit", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Enter",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ])
+                        .alignment(Alignment::Right),
+                    )
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw("|"),
+                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                            Span::raw("("),
+                            Span::styled(
+                                "Esc",
+                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Green),
+                            ),
+                            Span::raw(")"),
+                            Span::raw("|"),
+                        ])
+                        .alignment(Alignment::Left),
+                    ),
+            )
+    }
+
+    fn make_shortcuts_overlay(&self) -> Table<'_> {
+        let shortcuts = vec![
+            ("Tab / ← →", "Switch between panels"),
+            ("↑↓ / j k", "Navigate up/down"),
+            ("Enter", "Open directory/bucket"),
+            ("Esc", "Go back / Clear filter"),
+            ("t", "Select for transfer"),
+            ("r", "Run transfers"),
+            ("l", "Show transfers list"),
+            ("s", "Select S3 account"),
+            ("c", "Create bucket"),
+            ("Del / ⌫", "Delete item"),
+            ("/", "Search/filter files"),
+            ("F1", "Sort by name"),
+            ("F2", "Sort by size"),
+            ("F3", "Sort by type"),
+            ("F5", "Refresh view"),
+            ("q", "Quit application"),
+            ("?", "Toggle this help"),
+        ];
+
+        let rows: Vec<Row> = shortcuts
+            .iter()
+            .map(|(key, desc)| {
+                Row::new(vec![
+                    Span::styled(*key, Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(*desc),
+                ])
+            })
+            .collect();
+
+        let header = Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Cyan).bold())
+            .bottom_margin(1);
+
+        Table::new(rows, [Constraint::Length(12), Constraint::Length(30)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Keyboard Shortcuts ")
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw(" Press "),
+                            Span::styled("?", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" or "),
+                            Span::styled("Esc", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" to close "),
+                        ])
+                        .alignment(Alignment::Center),
+                    ),
+            )
+    }
+
+    fn make_search_input(&self) -> Paragraph<'_> {
+        let scroll = self.search_input.visual_scroll(INPUT_SIZE);
+        Paragraph::new(self.search_input.value())
+            .style(Style::default().fg(Color::Yellow))
+            .scroll((0, scroll as u16))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .title_top(Line::from(vec![
+                        Span::raw("| "),
+                        Span::styled("Search", Style::default().fg(Color::Yellow).bold()),
+                        Span::raw(" |"),
+                    ]))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("filter", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Green),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left)),
+            )
+    }
+
     fn get_loading_info(&self) -> Throbber<'_> {
         Throbber::default()
             .label("Loading s3 data...")
@@ -248,9 +389,10 @@ impl FileManagerPage {
         .underlined()
         .height(1)
         .bottom_margin(0);
-        let rows = self
-            .props
-            .local_data
+
+        // Filter items based on search query
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
+        let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_local_row(self, item, focus_color));
         let widths = [
@@ -282,18 +424,48 @@ impl FileManagerPage {
         let to_transfer = s3_items.len() + local_items.len();
         let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
             + local_items.iter().filter(|i| i.is_transferred()).count();
+
+        // Count failed transfers
+        let failed = s3_items
+            .iter()
+            .filter(|i| i.transfer_state.error().is_some())
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| i.transfer_state.error().is_some())
+                .count();
+
+        // Build transfer info with error count if any
+        let transfer_info = if failed > 0 {
+            format!(
+                "Transfers: {} (✓{} done ✗{} failed)",
+                to_transfer, transferred, failed
+            )
+        } else if transferred > 0 {
+            format!("Transfers: {}/{} done", transferred, to_transfer)
+        } else {
+            format!("Transfers: {}", to_transfer)
+        };
+
+        // Build filter indicator
+        let filter_info = if !self.props.search_query.is_empty() {
+            format!(" • Filter: \"{}\"", self.props.search_query)
+        } else {
+            String::new()
+        };
+
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(
-                " Account: {} • Bucket: {} • Transfers: {}/{}",
-                self.props.current_s3_creds.name, bucket, to_transfer, transferred
+                " Account: {} • Bucket: {} • {}{}",
+                self.props.current_s3_creds.name, bucket, transfer_info, filter_info
             ))
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue);
             bottom_text
         } else {
             let bottom_text = Paragraph::new(format!(
-                " Account: {} • Transfers: {}/{}",
-                self.props.current_s3_creds.name, to_transfer, transferred
+                " Account: {} • {}{}",
+                self.props.current_s3_creds.name, transfer_info, filter_info
             ))
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue);
@@ -383,9 +555,10 @@ impl FileManagerPage {
         .underlined()
         .height(1)
         .bottom_margin(0);
-        let rows = self
-            .props
-            .s3_data
+
+        // Filter items based on search query
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
+        let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_s3_row(self, item, focus_color));
         let widths = [
@@ -442,10 +615,11 @@ impl FileManagerPage {
     }
 
     pub fn move_up_s3_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.s3_data, &self.props.search_query).len();
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i == 0_usize && !self.props.s3_data.is_empty() {
-                    self.props.s3_data.len() - 1
+                if i == 0_usize && filtered_len > 0 {
+                    filtered_len - 1
                 } else if i > 0 {
                     i - 1
                 } else {
@@ -454,15 +628,16 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty() {
+        if filtered_len > 0 {
             self.props.s3_table_state.select(Some(i));
         }
     }
 
     pub fn move_down_s3_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.s3_data, &self.props.search_query).len();
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if !self.props.s3_data.is_empty() && i >= self.props.s3_data.len() - 1 {
+                if filtered_len > 0 && i >= filtered_len - 1 {
                     0
                 } else {
                     i + 1
@@ -470,16 +645,17 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty() {
+        if filtered_len > 0 {
             self.props.s3_table_state.select(Some(i));
         }
     }
 
     pub fn move_up_local_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.local_data, &self.props.search_query).len();
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i == 0_usize && !self.props.local_data.is_empty() {
-                    self.props.local_data.len() - 1
+                if i == 0_usize && filtered_len > 0 {
+                    filtered_len - 1
                 } else if i > 0 {
                     i - 1
                 } else {
@@ -488,15 +664,16 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty() {
+        if filtered_len > 0 {
             self.props.local_table_state.select(Some(i));
         }
     }
 
     pub fn move_down_local_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.local_data, &self.props.search_query).len();
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if !self.props.local_data.is_empty() && i >= self.props.local_data.len() - 1 {
+                if filtered_len > 0 && i >= filtered_len - 1 {
                     0
                 } else {
                     i + 1
@@ -504,41 +681,57 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty() {
+        if filtered_len > 0 {
             self.props.local_table_state.select(Some(i));
         }
     }
 
     pub fn handle_selected_local_row(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index))
         {
             if selected_row.is_directory {
+                // Clear search filter when navigating into a directory
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 let _ = self.action_tx.send(Action::FetchLocalData {
                     path: selected_row.path.clone(),
                 });
-                // self.fetch_local_data(selected_row.path.clone());
             }
         }
     }
 
     pub fn handle_selected_s3_row(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index))
         {
             if selected_row.is_bucket {
+                // Clear search filter when navigating into a bucket
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 self.go_into(Some(selected_row.path.clone()), None);
                 let _ = self.action_tx.send(Action::FetchS3Data {
                     bucket: self.current_state().current_bucket.clone(),
                     prefix: self.current_state().current_prefix.clone(),
                 });
             } else if selected_row.is_directory {
+                // Clear search filter when navigating into a directory
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 self.go_into(None, Some(selected_row.path.clone())); //get bucket and prefix from previous entries
                 let _ = self.action_tx.send(Action::FetchS3Data {
                     bucket: self.current_state().current_bucket.clone(),
@@ -607,11 +800,12 @@ impl FileManagerPage {
     }
 
     fn transfer_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -645,11 +839,12 @@ impl FileManagerPage {
     }
 
     fn finish_recursive_transfer_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -689,11 +884,12 @@ impl FileManagerPage {
     }
 
     fn finish_recursive_delete_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -727,11 +923,12 @@ impl FileManagerPage {
     }
 
     fn transfer_from_local_to_s3(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
@@ -765,11 +962,12 @@ impl FileManagerPage {
     }
 
     fn delete_selected_s3_item(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -797,11 +995,12 @@ impl FileManagerPage {
     }
 
     fn delete_selected_local_item(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let selected_item = LocalSelectedItem::new(
@@ -855,9 +1054,12 @@ impl Component for FileManagerPage {
             show_delete_multiple_confirmation: false,
             show_download_confirmation: false,
             show_delete_error: false,
+            show_quit_confirmation: false,
+            show_shortcuts_overlay: false,
             s3_panel_selected: true,
             default_navigation_state: NavigationState::new(None, None),
             input: Input::default().with_value(String::from("")),
+            search_input: Input::default().with_value(String::from("")),
         }
             .move_with_state(state)
     }
@@ -952,6 +1154,43 @@ impl Component for FileManagerPage {
                 }
                 _ => {}
             }
+        } else if self.props.search_mode {
+            // Handle search mode input
+            match key.code {
+                KeyCode::Enter => {
+                    // Apply filter and exit search mode
+                    let _ = self.action_tx.send(Action::SetSearchQuery {
+                        query: self.search_input.value().to_string(),
+                    });
+                    let _ = self.action_tx.send(Action::SetSearchMode { active: false });
+                }
+                KeyCode::Esc => {
+                    // Cancel search
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
+                _ => {
+                    // Forward key events to search input
+                    let _ = self.search_input.handle_event(&crossterm::event::Event::Key(key));
+                }
+            }
+        } else if self.show_quit_confirmation {
+            match key.code {
+                KeyCode::Enter => {
+                    let _ = self.action_tx.send(Action::Exit);
+                }
+                KeyCode::Esc => {
+                    self.show_quit_confirmation = false;
+                }
+                _ => {}
+            }
+        } else if self.show_shortcuts_overlay {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    self.show_shortcuts_overlay = false;
+                }
+                _ => {}
+            }
         } else {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => match self.s3_panel_selected {
@@ -972,20 +1211,29 @@ impl Component for FileManagerPage {
                     true => self.handle_selected_s3_row(),
                     false => self.handle_selected_local_row(),
                 },
-                KeyCode::Esc => match self.s3_panel_selected {
-                    true => {
-                        if !self.props.s3_loading {
-                            self.handle_go_back_s3()
+                KeyCode::Esc => {
+                    // If there's an active search filter, clear it first
+                    if !self.props.search_query.is_empty() {
+                        self.search_input.reset();
+                        let _ = self.action_tx.send(Action::ClearSearch);
+                    } else {
+                        // Otherwise navigate back
+                        match self.s3_panel_selected {
+                            true => {
+                                if !self.props.s3_loading {
+                                    self.handle_go_back_s3()
+                                }
+                            }
+                            false => {
+                                if self.show_problem_popup {
+                                    self.show_problem_popup = false;
+                                } else {
+                                    self.handle_go_back_local()
+                                }
+                            }
                         }
                     }
-                    false => {
-                        if self.show_problem_popup {
-                            self.show_problem_popup = false;
-                        } else {
-                            self.handle_go_back_local()
-                        }
-                    }
-                },
+                }
                 KeyCode::Delete | KeyCode::Backspace => {
                     self.show_delete_confirmation = true;
                 }
@@ -1003,9 +1251,7 @@ impl Component for FileManagerPage {
                     self.s3_panel_selected = false;
                 }
                 KeyCode::Char('?') => {
-                    let _ = self.action_tx.send(Action::Navigate {
-                        page: ActivePage::Help,
-                    });
+                    self.show_shortcuts_overlay = true;
                 }
                 KeyCode::Char('l') => {
                     let _ = self.action_tx.send(Action::Navigate {
@@ -1021,7 +1267,7 @@ impl Component for FileManagerPage {
                     self.s3_panel_selected = !&self.s3_panel_selected;
                 }
                 KeyCode::Char('q') => {
-                    let _ = self.action_tx.send(Action::Exit);
+                    self.show_quit_confirmation = true;
                 }
                 KeyCode::F(5) => {
                     self.handle_refresh();
@@ -1061,6 +1307,11 @@ impl Component for FileManagerPage {
                             column: SortColumn::Type,
                         });
                     }
+                }
+                KeyCode::Char('/') => {
+                    // Activate search mode
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::SetSearchMode { active: true });
                 }
                 _ => {}
             }
@@ -1227,6 +1478,28 @@ impl ComponentRender<()> for FileManagerPage {
                 let block = self.make_delete_alert(err, Color::Red);
                 frame.render_widget(block, area);
             }
+        } else if self.props.search_mode {
+            // Show search input popup
+            let area = Self::centered_rect(50, 15, frame.area());
+            frame.render_widget(Clear, area);
+            let block = self.make_search_input();
+            frame.render_widget(block, area);
+            frame.set_cursor_position(ratatui::layout::Position::new(
+                area.x + self.search_input.visual_cursor() as u16 + 1,
+                area.y + 1,
+            ));
+        } else if self.show_quit_confirmation {
+            // Show quit confirmation popup
+            let area = Self::centered_rect(40, 15, frame.area());
+            frame.render_widget(Clear, area);
+            let block = self.make_quit_confirmation();
+            frame.render_widget(block, area);
+        } else if self.show_shortcuts_overlay {
+            // Show keyboard shortcuts overlay
+            let area = Self::centered_rect(50, 60, frame.area());
+            frame.render_widget(Clear, area);
+            let table = self.make_shortcuts_overlay();
+            frame.render_widget(table, area);
         }
     }
 }

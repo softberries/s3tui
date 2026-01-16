@@ -47,6 +47,7 @@ impl From<&State> for Props {
                 vec!["F1".to_string(), "sort by name".to_string()],
                 vec!["F2".to_string(), "sort by size".to_string()],
                 vec!["F3".to_string(), "sort by type".to_string()],
+                vec!["/".to_string(), "search/filter files".to_string()],
                 vec!["q".to_string(), "quit the application".to_string()],
                 vec!["?".to_string(), "this help page".to_string()],
             ],

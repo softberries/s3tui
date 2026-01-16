@@ -1,5 +1,6 @@
 //! This module provides functionality for representing s3 data
 
+use crate::model::filtering::Filterable;
 use crate::model::sorting::{parse_size_to_bytes, Sortable};
 
 /// Represents a file in s3 bucket
@@ -64,6 +65,12 @@ impl Sortable for S3DataItem {
 
     fn is_directory(&self) -> bool {
         self.is_directory
+    }
+}
+
+impl Filterable for S3DataItem {
+    fn filterable_name(&self) -> &str {
+        &self.name
     }
 }
 

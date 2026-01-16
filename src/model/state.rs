@@ -55,6 +55,10 @@ pub struct State {
     pub create_bucket_error: Option<S3Error>,
     pub s3_sort_state: SortState,
     pub local_sort_state: SortState,
+    /// Current search/filter query
+    pub search_query: String,
+    /// Whether search input is active
+    pub search_mode: bool,
 }
 
 impl State {
@@ -228,6 +232,19 @@ impl State {
     pub fn sort_local_data(&mut self, column: SortColumn) {
         self.local_sort_state.set_column(column);
         sort_items(&mut self.local_data, &self.local_sort_state);
+    }
+
+    pub fn set_search_mode(&mut self, active: bool) {
+        self.search_mode = active;
+    }
+
+    pub fn set_search_query(&mut self, query: String) {
+        self.search_query = query;
+    }
+
+    pub fn clear_search(&mut self) {
+        self.search_query.clear();
+        self.search_mode = false;
     }
 
     pub fn add_s3_selected_item(&mut self, item: S3SelectedItem) {
@@ -1057,5 +1074,45 @@ mod tests {
         // dir-a should be complete even though dir-b is not
         assert!(state.all_downloads_complete_for_directory("/home/user/dir-a"));
         assert!(!state.all_downloads_complete_for_directory("/home/user/dir-b"));
+    }
+
+    #[test]
+    fn test_search_mode_activation() {
+        let mut state = State::default();
+        assert!(!state.search_mode);
+        assert!(state.search_query.is_empty());
+
+        state.set_search_mode(true);
+        assert!(state.search_mode);
+    }
+
+    #[test]
+    fn test_search_mode_deactivation_preserves_query() {
+        let mut state = State::default();
+        state.search_mode = true;
+        state.search_query = "test".to_string();
+
+        state.set_search_mode(false);
+        assert!(!state.search_mode);
+        // Query should be preserved so filtering continues after closing the input
+        assert_eq!(state.search_query, "test");
+    }
+
+    #[test]
+    fn test_set_search_query() {
+        let mut state = State::default();
+        state.set_search_query("document".to_string());
+        assert_eq!(state.search_query, "document");
+    }
+
+    #[test]
+    fn test_clear_search() {
+        let mut state = State::default();
+        state.search_mode = true;
+        state.search_query = "test".to_string();
+
+        state.clear_search();
+        assert!(!state.search_mode);
+        assert!(state.search_query.is_empty());
     }
 }
