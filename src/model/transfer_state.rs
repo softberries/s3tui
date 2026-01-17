@@ -16,10 +16,14 @@ pub enum TransferState {
     Pending,
     /// Transfer is in progress with a percentage (0.0 to 100.0)
     InProgress(f64),
+    /// Transfer is paused with current progress preserved
+    Paused(f64),
     /// Transfer completed successfully
     Completed,
     /// Transfer failed with an error message
     Failed(String),
+    /// Transfer was cancelled by user
+    Cancelled,
 }
 
 impl TransferState {
@@ -33,9 +37,29 @@ impl TransferState {
         match self {
             TransferState::Pending => 0.0,
             TransferState::InProgress(p) => *p,
+            TransferState::Paused(p) => *p,
             TransferState::Completed => 100.0,
             TransferState::Failed(_) => 0.0,
+            TransferState::Cancelled => 0.0,
         }
+    }
+
+    /// Returns true if the transfer is paused
+    pub fn is_paused(&self) -> bool {
+        matches!(self, TransferState::Paused(_))
+    }
+
+    /// Returns true if the transfer was cancelled
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, TransferState::Cancelled)
+    }
+
+    /// Returns true if the transfer is in a terminal state (completed, failed, or cancelled)
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            TransferState::Completed | TransferState::Failed(_) | TransferState::Cancelled
+        )
     }
 
     /// Returns the error message if the transfer failed
@@ -52,8 +76,10 @@ impl fmt::Display for TransferState {
         match self {
             TransferState::Pending => write!(f, "Pending"),
             TransferState::InProgress(p) => write!(f, "In Progress ({:.1}%)", p),
+            TransferState::Paused(p) => write!(f, "Paused ({:.1}%)", p),
             TransferState::Completed => write!(f, "Completed"),
             TransferState::Failed(msg) => write!(f, "Failed: {}", msg),
+            TransferState::Cancelled => write!(f, "Cancelled"),
         }
     }
 }

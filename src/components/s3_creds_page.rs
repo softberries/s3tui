@@ -28,6 +28,7 @@ impl From<&State> for Props {
 pub struct S3CredsPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
+    show_shortcuts_overlay: bool,
 }
 
 impl Component for S3CredsPage {
@@ -39,6 +40,7 @@ impl Component for S3CredsPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
+            show_shortcuts_overlay: false,
         }
         .move_with_state(state)
     }
@@ -53,6 +55,7 @@ impl Component for S3CredsPage {
                 creds_table_state: self.props.creds_table_state.clone(),
                 ..new_props
             },
+            show_shortcuts_overlay: self.show_shortcuts_overlay,
             ..self
         }
     }
@@ -61,6 +64,18 @@ impl Component for S3CredsPage {
         if key.kind != KeyEventKind::Press {
             return;
         }
+
+        // Handle shortcuts overlay
+        if self.show_shortcuts_overlay {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    self.show_shortcuts_overlay = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => self.move_down_creds_table_selection(),
             KeyCode::Char('k') | KeyCode::Up => self.move_up_creds_table_selection(),
@@ -69,9 +84,7 @@ impl Component for S3CredsPage {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate {
-                    page: ActivePage::Help,
-                });
+                self.show_shortcuts_overlay = true;
             }
             KeyCode::Esc => {
                 let _ = self.action_tx.send(Action::Navigate {
@@ -84,6 +97,65 @@ impl Component for S3CredsPage {
 }
 
 impl S3CredsPage {
+    fn make_shortcuts_overlay(&self) -> Table<'_> {
+        let shortcuts = [
+            ("↑↓ / j k", "Navigate up/down"),
+            ("Enter", "Select account"),
+            ("Esc", "Back to file manager"),
+            ("q", "Quit application"),
+            ("?", "Toggle this help"),
+        ];
+
+        let rows: Vec<Row> = shortcuts
+            .iter()
+            .map(|(key, desc)| {
+                Row::new(vec![
+                    Span::styled(*key, Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(*desc),
+                ])
+            })
+            .collect();
+
+        let header = Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Cyan).bold())
+            .bottom_margin(1);
+
+        Table::new(rows, [Constraint::Length(12), Constraint::Length(30)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Account Selection Shortcuts ")
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw(" Press "),
+                            Span::styled("?", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" or "),
+                            Span::styled("Esc", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" to close "),
+                        ])
+                        .alignment(Alignment::Center),
+                    ),
+            )
+    }
+
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::vertical([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+        Layout::horizontal([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+    }
+
     fn get_s3_row(&self, item: &FileCredential) -> Row<'_> {
         if item.selected {
             Row::new(vec![format!("{} (*)", item.name)])
@@ -185,7 +257,15 @@ impl ComponentRender<()> for S3CredsPage {
             &s3_table,
             frame.area(),
             &mut self.props.clone().creds_table_state,
-        )
+        );
+
+        // Show keyboard shortcuts overlay
+        if self.show_shortcuts_overlay {
+            let area = Self::centered_rect(50, 40, frame.area());
+            frame.render_widget(Clear, area);
+            let table = self.make_shortcuts_overlay();
+            frame.render_widget(table, area);
+        }
     }
 }
 
@@ -228,14 +308,14 @@ mod tests {
         component.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()));
         assert_eq!(rx.recv().await.unwrap(), Action::Exit);
 
-        // Simulate pressing '?'
+        // Simulate pressing '?' to show overlay
+        assert!(!component.show_shortcuts_overlay, "Overlay should be hidden initially");
         component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
-        assert_eq!(
-            rx.recv().await.unwrap(),
-            Action::Navigate {
-                page: ActivePage::Help
-            }
-        );
+        assert!(component.show_shortcuts_overlay, "Overlay should be shown after pressing ?");
+
+        // Simulate pressing '?' again to close overlay
+        component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
+        assert!(!component.show_shortcuts_overlay, "Overlay should be hidden after pressing ? again");
 
         // Simulate pressing 'Esc'
         component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));

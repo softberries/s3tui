@@ -1,6 +1,7 @@
 use crate::model::has_children::{HasChildren, HasProgress};
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::transfer_state::TransferState;
+use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,8 @@ pub struct LocalSelectedItem {
     pub s3_creds: FileCredential,
     pub children: Option<Vec<LocalSelectedItem>>,
     pub transfer_state: TransferState,
+    /// Job ID assigned by TransferManager when queued
+    pub job_id: Option<JobId>,
 }
 
 impl LocalSelectedItem {
@@ -37,6 +40,7 @@ impl LocalSelectedItem {
             s3_creds,
             children,
             transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
 
@@ -50,6 +54,7 @@ impl LocalSelectedItem {
             s3_creds,
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
 
@@ -75,6 +80,7 @@ impl LocalSelectedItem {
                             s3_creds: item.s3_creds.clone(),
                             children: None,
                             transfer_state: TransferState::default(),
+                            job_id: None,
                         }));
                     } else {
                         // Process files
@@ -90,6 +96,7 @@ impl LocalSelectedItem {
                             s3_creds: item.s3_creds.clone(),
                             children: None,
                             transfer_state: TransferState::default(),
+                            job_id: None,
                         });
                     }
                 }
@@ -145,6 +152,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let res = LocalSelectedItem::new(
             "file1.txt".into(),
@@ -169,6 +177,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         // Initially pending

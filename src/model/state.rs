@@ -30,7 +30,6 @@ pub enum ActivePage {
     FileManager,
     Transfers,
     S3Creds,
-    Help,
 }
 
 /// Represents entire state of the application, each page transforms this information for
@@ -385,6 +384,176 @@ impl State {
     pub fn update_progress_on_selected_s3_item(&mut self, item: &DownloadProgressItem) {
         self.update_s3_item_with_progress(item);
     }
+
+    /// Update job_id on an S3 selected item
+    pub fn update_s3_item_job_id(&mut self, updated_item: &S3SelectedItem) {
+        for item in &mut self.s3_selected_items {
+            if item.path == updated_item.path
+                && item.bucket == updated_item.bucket
+                && item.name == updated_item.name
+            {
+                item.job_id = updated_item.job_id;
+                item.transfer_state = updated_item.transfer_state.clone();
+                return;
+            }
+            // Check children
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.path == updated_item.path
+                        && child.bucket == updated_item.bucket
+                        && child.name == updated_item.name
+                    {
+                        child.job_id = updated_item.job_id;
+                        child.transfer_state = updated_item.transfer_state.clone();
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Update job_id on a local selected item
+    pub fn update_local_item_job_id(&mut self, updated_item: &LocalSelectedItem) {
+        for item in &mut self.local_selected_items {
+            if item.path == updated_item.path && item.name == updated_item.name {
+                item.job_id = updated_item.job_id;
+                item.transfer_state = updated_item.transfer_state.clone();
+                return;
+            }
+            // Check children
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.path == updated_item.path && child.name == updated_item.name {
+                        child.job_id = updated_item.job_id;
+                        child.transfer_state = updated_item.transfer_state.clone();
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set transfer state to paused for item with given job_id
+    pub fn set_transfer_paused(&mut self, job_id: crate::services::transfer_manager::JobId) {
+        // Check S3 items
+        for item in &mut self.s3_selected_items {
+            if item.job_id == Some(job_id) {
+                let progress = item.transfer_state.progress();
+                item.transfer_state = TransferState::Paused(progress);
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        let progress = child.transfer_state.progress();
+                        child.transfer_state = TransferState::Paused(progress);
+                        return;
+                    }
+                }
+            }
+        }
+        // Check local items
+        for item in &mut self.local_selected_items {
+            if item.job_id == Some(job_id) {
+                let progress = item.transfer_state.progress();
+                item.transfer_state = TransferState::Paused(progress);
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        let progress = child.transfer_state.progress();
+                        child.transfer_state = TransferState::Paused(progress);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set transfer state back to pending for resumed item with given job_id
+    pub fn set_transfer_resumed(&mut self, job_id: crate::services::transfer_manager::JobId) {
+        // Check S3 items
+        for item in &mut self.s3_selected_items {
+            if item.job_id == Some(job_id) {
+                if let TransferState::Paused(progress) = item.transfer_state {
+                    item.transfer_state = TransferState::InProgress(progress);
+                } else {
+                    item.transfer_state = TransferState::Pending;
+                }
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        if let TransferState::Paused(progress) = child.transfer_state {
+                            child.transfer_state = TransferState::InProgress(progress);
+                        } else {
+                            child.transfer_state = TransferState::Pending;
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+        // Check local items
+        for item in &mut self.local_selected_items {
+            if item.job_id == Some(job_id) {
+                if let TransferState::Paused(progress) = item.transfer_state {
+                    item.transfer_state = TransferState::InProgress(progress);
+                } else {
+                    item.transfer_state = TransferState::Pending;
+                }
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        if let TransferState::Paused(progress) = child.transfer_state {
+                            child.transfer_state = TransferState::InProgress(progress);
+                        } else {
+                            child.transfer_state = TransferState::Pending;
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set transfer state to cancelled for item with given job_id
+    pub fn set_transfer_cancelled(&mut self, job_id: crate::services::transfer_manager::JobId) {
+        // Check S3 items
+        for item in &mut self.s3_selected_items {
+            if item.job_id == Some(job_id) {
+                item.transfer_state = TransferState::Cancelled;
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        child.transfer_state = TransferState::Cancelled;
+                        return;
+                    }
+                }
+            }
+        }
+        // Check local items
+        for item in &mut self.local_selected_items {
+            if item.job_id == Some(job_id) {
+                item.transfer_state = TransferState::Cancelled;
+                return;
+            }
+            if let Some(children) = &mut item.children {
+                for child in children {
+                    if child.job_id == Some(job_id) {
+                        child.transfer_state = TransferState::Cancelled;
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -400,8 +569,8 @@ mod tests {
     #[test]
     fn set_active_page_changes_page_correctly() {
         let mut state = State::default();
-        state.set_active_page(ActivePage::Help);
-        assert_eq!(state.active_page, ActivePage::Help);
+        state.set_active_page(ActivePage::Transfers);
+        assert_eq!(state.active_page, ActivePage::Transfers);
     }
 
     #[test]
@@ -486,6 +655,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         state.add_s3_selected_item(item.clone());
@@ -508,6 +678,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         state.add_local_selected_item(item.clone());
@@ -531,6 +702,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
@@ -551,6 +723,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let selected_item = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -562,6 +735,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: Some(vec![child.clone()]),
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.s3_selected_items.push(selected_item.clone());
         state.update_selected_s3_transfers(child.clone());
@@ -587,6 +761,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Failed("Error".into()),
+            job_id: None,
         };
         state.add_s3_selected_item(selected_item.clone());
         state.update_selected_s3_transfers(selected_item.clone());
@@ -606,6 +781,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
@@ -625,6 +801,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Failed("Error".into()),
+            job_id: None,
         };
         state.add_local_selected_item(selected_item.clone());
         state.update_selected_local_transfers(selected_item.clone());
@@ -644,6 +821,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let local_item_transfered = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
@@ -654,6 +832,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let s3_item_not_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -665,6 +844,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let s3_item_transferred = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -676,6 +856,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         state.add_local_selected_item(local_item_transfered);
         state.add_local_selected_item(local_item_not_transfered);
@@ -703,6 +884,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         state.local_selected_items.push(selected_item.clone());
@@ -728,6 +910,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         state.s3_selected_items.push(item.clone());
@@ -754,6 +937,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.local_selected_items = vec![selected_item];
         let progress_item = UploadProgressItem {
@@ -776,6 +960,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let selected_item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
@@ -786,6 +971,7 @@ mod tests {
             s3_creds: Default::default(),
             children: Some(vec![child]),
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.local_selected_items = vec![selected_item];
         let progress_item = UploadProgressItem {
@@ -818,6 +1004,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.s3_selected_items = vec![selected_item];
         // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
@@ -843,6 +1030,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let selected_item = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -854,6 +1042,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: Some(vec![child.clone()]),
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         state.s3_selected_items = vec![selected_item];
         // DownloadProgressItem.name should be the path (S3 key), matching download_item behavior
@@ -910,6 +1099,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
@@ -920,6 +1110,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -938,6 +1129,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
@@ -948,6 +1140,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::InProgress(50.0),
+            job_id: None,
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -966,6 +1159,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = LocalSelectedItem {
             destination_bucket: "bucket-b".into(),
@@ -976,6 +1170,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::InProgress(50.0),
+            job_id: None,
         };
         state.add_local_selected_item(item1);
         state.add_local_selected_item(item2);
@@ -997,6 +1192,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1008,6 +1204,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);
@@ -1027,6 +1224,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1038,6 +1236,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::InProgress(50.0),
+            job_id: None,
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);
@@ -1057,6 +1256,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let item2 = S3SelectedItem {
             bucket: Some("test-bucket".to_string()),
@@ -1068,6 +1268,7 @@ mod tests {
             s3_creds: FileCredential::default(),
             children: None,
             transfer_state: TransferState::InProgress(50.0),
+            job_id: None,
         };
         state.add_s3_selected_item(item1);
         state.add_s3_selected_item(item2);
