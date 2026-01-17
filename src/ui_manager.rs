@@ -15,7 +15,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use tokio::sync::{
     broadcast,
-    mpsc::{self, UnboundedReceiver},
+    mpsc::{self, Receiver, UnboundedReceiver},
 };
 use tokio_stream::StreamExt;
 
@@ -40,7 +40,7 @@ impl UiManager {
     }
     pub async fn main_loop(
         self,
-        mut state_rx: UnboundedReceiver<State>,
+        mut state_rx: Receiver<State>,
         mut interrupt_rx: broadcast::Receiver<Interrupted>,
     ) -> eyre::Result<Interrupted> {
         // consume the first state to initialize the ui app

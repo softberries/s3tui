@@ -21,11 +21,17 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 /// Maximum simultaneous uploads/downloads
 static S3_OPERATIONS_CONCURRENCY_LEVEL: usize = 8;
+
+/// Channel capacity for state updates (prevents UI backup from causing memory issues)
+const STATE_CHANNEL_CAPACITY: usize = 100;
+
+/// Channel capacity for progress updates (high volume, drop old updates if full)
+const PROGRESS_CHANNEL_CAPACITY: usize = 1000;
 
 /// Message sent when a transfer job completes or fails
 #[derive(Debug, Clone)]
@@ -38,13 +44,13 @@ pub enum TransferResult {
 
 /// Handles all the actions, calls methods on external services and updates the state when necessary
 pub struct StateStore {
-    state_tx: UnboundedSender<State>,
+    state_tx: Sender<State>,
     task_registry: Arc<TaskRegistry>,
 }
 
 impl StateStore {
-    pub fn new() -> (Self, UnboundedReceiver<State>) {
-        let (state_tx, state_rx) = mpsc::unbounded_channel::<State>();
+    pub fn new() -> (Self, Receiver<State>) {
+        let (state_tx, state_rx) = mpsc::channel::<State>(STATE_CHANNEL_CAPACITY);
 
         (
             StateStore {
@@ -54,7 +60,6 @@ impl StateStore {
             state_rx,
         )
     }
-
 }
 
 impl StateStore {
@@ -137,8 +142,8 @@ impl StateStore {
         s3_data_fetcher: S3DataFetcher,
         job_item_map: Arc<Mutex<HashMap<JobId, TransferJobInfo>>>,
         result_tx: UnboundedSender<TransferResult>,
-        upload_progress_tx: UnboundedSender<UploadProgressItem>,
-        download_progress_tx: UnboundedSender<DownloadProgressItem>,
+        upload_progress_tx: Sender<UploadProgressItem>,
+        download_progress_tx: Sender<DownloadProgressItem>,
     ) {
         task_registry.spawn_tracked("transfer-worker", async move {
             loop {
@@ -463,8 +468,8 @@ impl StateStore {
         let (local_tx, mut local_rx) = mpsc::unbounded_channel::<(String, Vec<LocalDataItem>)>();
         let (local_deleted_tx, mut local_deleted_rx) =
             mpsc::unbounded_channel::<Option<LocalError>>();
-        let (upload_tx, mut upload_rx) = mpsc::unbounded_channel::<UploadProgressItem>();
-        let (download_tx, mut download_rx) = mpsc::unbounded_channel::<DownloadProgressItem>();
+        let (upload_tx, mut upload_rx) = mpsc::channel::<UploadProgressItem>(PROGRESS_CHANNEL_CAPACITY);
+        let (download_tx, mut download_rx) = mpsc::channel::<DownloadProgressItem>(PROGRESS_CHANNEL_CAPACITY);
         let (create_bucket_tx, mut create_bucket_rx) = mpsc::unbounded_channel::<Option<S3Error>>();
         let (transfer_result_tx, mut transfer_result_rx) =
             mpsc::unbounded_channel::<TransferResult>();
@@ -497,7 +502,7 @@ impl StateStore {
         .await;
 
         // the initial state once
-        self.state_tx.send(state.clone())?;
+        self.state_tx.send(state.clone()).await?;
 
         let _ticker = tokio::time::interval(Duration::from_secs(1));
 
@@ -510,38 +515,38 @@ impl StateStore {
                             },
                             Action::Navigate { page} => {
                                 state.set_active_page(page);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                             }
                             Action::FetchLocalData { path} =>
                                 self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
                             Action::FetchS3Data { bucket, prefix } => {
                                 state.set_s3_loading(true);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                                 let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                                 self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await
                             }
                             Action::ListS3DataRecursiveForItem { item } => {
                                 state.set_s3_list_recursive_loading(true);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                                 let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                                 self.list_s3_data_recursive(item, s3_data_fetcher, s3_full_list_tx.clone()).await
                             }
                             Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
                             Action::SelectS3Item { item} => {
                                 state.add_s3_selected_item(item);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                             },
                             Action::UnselectS3Item { item} => {
                                 state.remove_s3_selected_item(item);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                             },
                             Action::SelectLocalItem { item} => {
                                 state.add_local_selected_item(item);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                             },
                             Action::UnselectLocalItem { item } => {
                                 state.remove_local_selected_item(item);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                             },
                             Action::RunTransfers => {
                                 state.remove_already_transferred_items();
@@ -570,11 +575,11 @@ impl StateStore {
                                     state.update_local_item_job_id(&updated_item);
                                 }
 
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::SelectCurrentS3Creds { item} => {
                                 state.set_current_s3_creds(item);
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                                 let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                                 self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
                             },
@@ -590,7 +595,7 @@ impl StateStore {
                             },
                             Action::DeleteLocalItem {item} => {
                                 state.remove_local_selected_item(item.clone());
-                                let _ = self.state_tx.send(state.clone());
+                                let _ = self.state_tx.send(state.clone()).await;
                                 self.delete_local_data(item.clone(), local_data_fetcher.clone(), local_deleted_tx.clone()).await;
                                 self.fetch_local_data(Some(item.path.clone()), local_data_fetcher.clone(), local_tx.clone()).await;
                             },
@@ -604,27 +609,27 @@ impl StateStore {
                                 state.s3_delete_error = None;
                                 state.local_delete_error = None;
                                 state.create_bucket_error = None;
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::SortS3 { column } => {
                                 state.sort_s3_data(column);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::SortLocal { column } => {
                                 state.sort_local_data(column);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::SetSearchMode { active } => {
                                 state.set_search_mode(active);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::SetSearchQuery { query } => {
                                 state.set_search_query(query);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::ClearSearch => {
                                 state.clear_search();
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             },
                             Action::PauseTransfer { job_id } => {
                                 if let Err(e) = transfer_manager.pause(job_id).await {
@@ -632,7 +637,7 @@ impl StateStore {
                                 } else {
                                     // Update state to reflect paused status
                                     state.set_transfer_paused(job_id);
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 }
                             },
                             Action::ResumeTransfer { job_id } => {
@@ -641,7 +646,7 @@ impl StateStore {
                                 } else {
                                     // Update state to reflect resumed (pending) status
                                     state.set_transfer_resumed(job_id);
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 }
                             },
                             Action::CancelTransfer { job_id } => {
@@ -652,7 +657,7 @@ impl StateStore {
                                     state.set_transfer_cancelled(job_id);
                                     // Remove from job map
                                     job_item_map.lock().await.remove(&job_id);
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 }
                             },
                         },
@@ -666,11 +671,11 @@ impl StateStore {
                                         let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
                                         self.fetch_s3_data(Some(dest_bucket), None, s3_data_fetcher, s3_tx.clone()).await;
                                     }
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 },
                                 TransferResult::UploadFailed(item, _error) => {
                                     state.update_selected_local_transfers(item);
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 },
                                 TransferResult::DownloadComplete(item) => {
                                     let dest_dir = item.destination_dir.clone();
@@ -679,49 +684,49 @@ impl StateStore {
                                     if state.all_downloads_complete_for_directory(&dest_dir) {
                                         self.fetch_local_data(Some(dest_dir), local_data_fetcher.clone(), local_tx.clone()).await;
                                     }
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 },
                                 TransferResult::DownloadFailed(item, _error) => {
                                     state.update_selected_s3_transfers(item);
-                                    self.state_tx.send(state.clone())?;
+                                    self.state_tx.send(state.clone()).await?;
                                 },
                             }
                         },
                         Some((bucket, prefix, data)) = s3_rx.recv() => {
                             state.update_buckets(bucket, prefix, data);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         },
                         Some((_bucket, _prefix, data)) = s3_full_list_rx.recv() => {
                             state.update_s3_recursive_list(data);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         },
                         Some((path, files)) = local_rx.recv() => {
                             state.update_files(path, files);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         },
                         Some(item) = upload_rx.recv() => {
                             if state.active_page == ActivePage::Transfers {
                                 state.update_progress_on_selected_local_item(&item);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             }
                         },
                         Some(item) = download_rx.recv() => {
                             if state.active_page == ActivePage::Transfers {
                                 state.update_progress_on_selected_s3_item(&item);
-                                self.state_tx.send(state.clone())?;
+                                self.state_tx.send(state.clone()).await?;
                             }
                         },
                         Some(error) = local_deleted_rx.recv() => {
                             state.set_local_delete_error(error);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         },
                         Some(error) = s3_deleted_rx.recv() => {
                             state.set_s3_delete_error(error);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         },
                         Some(error) = create_bucket_rx.recv() => {
                             state.set_create_bucket_error(error);
-                            self.state_tx.send(state.clone())?;
+                            self.state_tx.send(state.clone()).await?;
                         }
 
                 // Catch and handle interrupt signal to gracefully shutdown

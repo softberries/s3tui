@@ -14,7 +14,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::upload_progress_item::UploadProgressItem;
@@ -39,7 +39,7 @@ pub struct S3DataFetcher {
 struct ProgressTracker {
     bytes_written: u64,
     content_length: u64,
-    progress_sender: UnboundedSender<UploadProgressItem>,
+    progress_sender: Sender<UploadProgressItem>,
     uri: String,
 }
 
@@ -51,7 +51,8 @@ impl ProgressTracker {
             progress: progress * 100.0,
             uri: self.uri.clone(),
         };
-        let _ = self.progress_sender.send(progress_item);
+        // Use try_send to avoid blocking transfers when channel is full
+        let _ = self.progress_sender.try_send(progress_item);
     }
 }
 
@@ -73,7 +74,7 @@ impl ProgressBody<SdkBody> {
     // this "change the wheels on the fly" utility.
     pub fn replace(
         value: Request<SdkBody>,
-        tx: UnboundedSender<UploadProgressItem>,
+        tx: Sender<UploadProgressItem>,
     ) -> Result<Request<SdkBody>, Infallible> {
         let uri = value.uri().to_string();
         let value = value.map(|body| {
@@ -94,7 +95,7 @@ impl<InnerBody> ProgressBody<InnerBody>
         body: InnerBody,
         content_length: u64,
         uri: String,
-        tx: UnboundedSender<UploadProgressItem>,
+        tx: Sender<UploadProgressItem>,
     ) -> Self {
         Self {
             inner: body,
@@ -182,7 +183,7 @@ impl S3DataFetcher {
     pub async fn upload_item(
         &self,
         item: LocalSelectedItem,
-        upload_tx: UnboundedSender<UploadProgressItem>,
+        upload_tx: Sender<UploadProgressItem>,
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
@@ -234,7 +235,7 @@ impl S3DataFetcher {
     pub async fn download_item(
         &self,
         item: S3SelectedItem,
-        download_tx: UnboundedSender<DownloadProgressItem>,
+        download_tx: Sender<DownloadProgressItem>,
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
@@ -281,7 +282,8 @@ impl S3DataFetcher {
                         bucket: bucket.clone(),
                         progress,
                     };
-                    let _ = download_tx.send(download_progress_item);
+                    // Use try_send to avoid blocking downloads when channel is full
+                    let _ = download_tx.try_send(download_progress_item);
                 }
                 Ok(true)
             }
