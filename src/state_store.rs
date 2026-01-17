@@ -12,6 +12,7 @@ use crate::model::transfer_state::TransferState;
 use crate::model::upload_progress_item::UploadProgressItem;
 use crate::services::local_data_fetcher::LocalDataFetcher;
 use crate::services::s3_data_fetcher::S3DataFetcher;
+use crate::services::task_registry::TaskRegistry;
 use crate::services::transfer_manager::{JobId, TransferManager};
 use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
@@ -38,14 +39,22 @@ pub enum TransferResult {
 /// Handles all the actions, calls methods on external services and updates the state when necessary
 pub struct StateStore {
     state_tx: UnboundedSender<State>,
+    task_registry: Arc<TaskRegistry>,
 }
 
 impl StateStore {
     pub fn new() -> (Self, UnboundedReceiver<State>) {
         let (state_tx, state_rx) = mpsc::unbounded_channel::<State>();
 
-        (StateStore { state_tx }, state_rx)
+        (
+            StateStore {
+                state_tx,
+                task_registry: Arc::new(TaskRegistry::new()),
+            },
+            state_rx,
+        )
     }
+
 }
 
 impl StateStore {
@@ -122,7 +131,8 @@ impl StateStore {
     }
 
     /// Spawn the transfer worker that processes jobs from the TransferManager
-    fn spawn_transfer_worker(
+    async fn spawn_transfer_worker(
+        task_registry: &TaskRegistry,
         transfer_manager: Arc<TransferManager>,
         s3_data_fetcher: S3DataFetcher,
         job_item_map: Arc<Mutex<HashMap<JobId, TransferJobInfo>>>,
@@ -130,7 +140,7 @@ impl StateStore {
         upload_progress_tx: UnboundedSender<UploadProgressItem>,
         download_progress_tx: UnboundedSender<DownloadProgressItem>,
     ) {
-        tokio::spawn(async move {
+        task_registry.spawn_tracked("transfer-worker", async move {
             loop {
                 // Try to get the next job
                 if let Some(job) = transfer_manager.try_get_next().await {
@@ -197,7 +207,7 @@ impl StateStore {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
-        });
+        }).await;
     }
 
     async fn fetch_s3_data(
@@ -207,7 +217,12 @@ impl StateStore {
         s3_data_fetcher: S3DataFetcher,
         s3_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>,
     ) {
-        tokio::spawn(async move {
+        let task_name = match (&bucket, &prefix) {
+            (Some(b), Some(p)) => format!("fetch-s3:{}/{}", b, p),
+            (Some(b), None) => format!("fetch-s3:{}", b),
+            _ => "fetch-s3:buckets".to_string(),
+        };
+        self.task_registry.spawn_tracked(task_name, async move {
             match s3_data_fetcher
                 .list_current_location(bucket.clone(), prefix.clone())
                 .await
@@ -219,7 +234,7 @@ impl StateStore {
                     tracing::error!("Failed to fetch S3 data: {}", e);
                 }
             }
-        });
+        }).await;
     }
 
     async fn list_s3_data_recursive(
@@ -229,7 +244,8 @@ impl StateStore {
         s3_full_list_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>,
     ) {
         tracing::info!("list_s3_Data_recursive");
-        tokio::spawn(async move {
+        let task_name = format!("list-s3-recursive:{}", item.name);
+        self.task_registry.spawn_tracked(task_name, async move {
             let bucket_name = if item.is_bucket {
                 item.name
             } else {
@@ -252,7 +268,7 @@ impl StateStore {
                     tracing::error!("Failed to fetch S3 data: {}", e);
                 }
             }
-        });
+        }).await;
     }
 
     async fn fetch_local_data(
@@ -262,7 +278,8 @@ impl StateStore {
         local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>,
     ) {
         let path = Self::get_directory_path(dir_path);
-        tokio::spawn(async move {
+        let task_name = format!("fetch-local:{}", path.as_deref().unwrap_or("/"));
+        self.task_registry.spawn_tracked(task_name, async move {
             match local_data_fetcher.read_directory(path.clone()).await {
                 Ok(data) => {
                     let _ = local_tx.send((path.clone().unwrap_or("/".to_string()), data));
@@ -272,7 +289,7 @@ impl StateStore {
                     // Handle error, maybe retry or send error state
                 }
             }
-        });
+        }).await;
     }
 
     fn get_directory_path(input_path: Option<String>) -> Option<String> {
@@ -297,7 +314,7 @@ impl StateStore {
         local_data_fetcher: LocalDataFetcher,
         local_tx: UnboundedSender<(String, Vec<LocalDataItem>)>,
     ) {
-        tokio::spawn(async move {
+        self.task_registry.spawn_tracked("move-back-local", async move {
             let path = Path::new(&current_path);
 
             match local_data_fetcher.read_parent_directory().await {
@@ -312,7 +329,7 @@ impl StateStore {
                     // Handle error, maybe retry or send error state
                 }
             }
-        });
+        }).await;
     }
 
     async fn delete_local_data(
@@ -322,8 +339,9 @@ impl StateStore {
         local_deleted_tx: UnboundedSender<Option<LocalError>>,
     ) {
         let path = item.path.clone();
+        let task_name = format!("delete-local:{}", item.name);
         if item.is_directory {
-            tokio::spawn(async move {
+            self.task_registry.spawn_tracked(task_name, async move {
                 match local_data_fetcher.delete_directory(path.clone()).await {
                     Ok(_) => {
                         let _ = local_deleted_tx.send(None);
@@ -334,9 +352,9 @@ impl StateStore {
                             local_deleted_tx.send(Some(LocalError::from_message(e.to_string())));
                     }
                 }
-            });
+            }).await;
         } else {
-            tokio::spawn(async move {
+            self.task_registry.spawn_tracked(task_name, async move {
                 match local_data_fetcher.delete_file(path.clone()).await {
                     Ok(_) => {
                         let _ = local_deleted_tx.send(None);
@@ -347,7 +365,7 @@ impl StateStore {
                             local_deleted_tx.send(Some(LocalError::from_message(e.to_string())));
                     }
                 }
-            });
+            }).await;
         }
     }
 
@@ -362,8 +380,9 @@ impl StateStore {
             if !item.is_directory {
                 let delete_tx = s3_delete_tx.clone();
                 let fetcher = s3_data_fetcher.clone();
+                let task_name = format!("delete-s3:{}", item.name);
 
-                tokio::spawn(async move {
+                self.task_registry.spawn_tracked(task_name, async move {
                     match fetcher
                         .delete_data(
                             item.is_bucket,
@@ -381,7 +400,7 @@ impl StateStore {
                             let _ = delete_tx.send(Some(S3Error::from_message(e.to_string())));
                         }
                     }
-                });
+                }).await;
             }
         }
     }
@@ -392,7 +411,8 @@ impl StateStore {
         s3_data_fetcher: S3DataFetcher,
         create_bucket_tx: UnboundedSender<Option<S3Error>>,
     ) {
-        tokio::spawn(async move {
+        let task_name = format!("create-bucket:{}", name);
+        self.task_registry.spawn_tracked(task_name, async move {
             match s3_data_fetcher
                 .create_bucket(name.clone(), s3_data_fetcher.default_region.clone())
                 .await
@@ -405,7 +425,7 @@ impl StateStore {
                     let _ = create_bucket_tx.send(Some(S3Error::from_message(e.to_string())));
                 }
             }
-        });
+        }).await;
     }
 
     fn get_current_s3_fetcher(state: &State) -> S3DataFetcher {
@@ -451,13 +471,15 @@ impl StateStore {
 
         // Spawn the transfer worker
         Self::spawn_transfer_worker(
+            &self.task_registry,
             transfer_manager.clone(),
             s3_data_fetcher.clone(),
             job_item_map.clone(),
             transfer_result_tx,
             upload_tx.clone(),
             download_tx.clone(),
-        );
+        )
+        .await;
 
         self.fetch_s3_data(None, None, s3_data_fetcher.clone(), s3_tx.clone())
             .await;
