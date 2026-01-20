@@ -3,9 +3,10 @@ use crate::model::s3_data_item::S3DataItem;
 use crate::model::transfer_state::TransferState;
 use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
+use serde::{Deserialize, Serialize};
 
 /// Represents an item (file/directory/bucket) on your s3 account
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3SelectedItem {
     pub bucket: Option<String>,
     pub name: String,

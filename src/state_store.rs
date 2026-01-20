@@ -14,8 +14,11 @@ use crate::services::local_data_fetcher::LocalDataFetcher;
 use crate::services::s3_data_fetcher::S3DataFetcher;
 use crate::services::task_registry::TaskRegistry;
 use crate::services::transfer_manager::{JobId, TransferManager};
+use crate::services::transfer_persistence::TransferPersistence;
+use crate::services::transfer_state::TransferStateStore;
 use crate::settings::file_credentials::FileCredential;
 use crate::termination::{Interrupted, Terminator};
+use crate::utils::get_data_dir;
 use color_eyre::eyre;
 use std::collections::HashMap;
 use std::path::Path;
@@ -46,6 +49,7 @@ pub enum TransferResult {
 pub struct StateStore {
     state_tx: Sender<State>,
     task_registry: Arc<TaskRegistry>,
+    transfer_state_store: Option<Arc<TransferStateStore>>,
 }
 
 impl StateStore {
@@ -56,6 +60,7 @@ impl StateStore {
             StateStore {
                 state_tx,
                 task_registry: Arc::new(TaskRegistry::new()),
+                transfer_state_store: None,
             },
             state_rx,
         )
@@ -73,27 +78,31 @@ impl StateStore {
         let mut updated_items = Vec::new();
 
         for mut item in items_with_children {
-            if !item.is_bucket && !item.is_directory {
-                let s3_path = item.path.clone().unwrap_or_else(|| item.name.clone());
-                let local_path = format!("{}/{}", item.destination_dir, item.name);
-
-                let job_id = transfer_manager
-                    .enqueue_download(s3_path.clone(), local_path, None)
-                    .await;
-
-                item.job_id = Some(job_id);
-                item.transfer_state = TransferState::Pending;
-
-                // Store mapping for later lookup
-                job_item_map.lock().await.insert(
-                    job_id,
-                    TransferJobInfo::Download {
-                        item: item.clone(),
-                    },
-                );
-
-                updated_items.push(item);
+            // Skip items that already have a job_id (already enqueued)
+            // Skip buckets and directories (only files can be downloaded)
+            if item.job_id.is_some() || item.is_bucket || item.is_directory {
+                continue;
             }
+
+            let s3_path = item.path.clone().unwrap_or_else(|| item.name.clone());
+            let local_path = format!("{}/{}", item.destination_dir, item.name);
+
+            let job_id = transfer_manager
+                .enqueue_download(s3_path.clone(), local_path, None)
+                .await;
+
+            item.job_id = Some(job_id);
+            item.transfer_state = TransferState::Pending;
+
+            // Store mapping for later lookup
+            job_item_map.lock().await.insert(
+                job_id,
+                TransferJobInfo::Download {
+                    item: item.clone(),
+                },
+            );
+
+            updated_items.push(item);
         }
         updated_items
     }
@@ -108,34 +117,39 @@ impl StateStore {
         let mut updated_items = Vec::new();
 
         for mut item in items_with_children {
-            if !item.is_directory {
-                let local_path = item.path.clone();
-                let s3_path = if item.destination_path.is_empty() {
-                    item.name.clone()
-                } else {
-                    format!("{}/{}", item.destination_path, item.name)
-                };
-
-                let job_id = transfer_manager
-                    .enqueue_upload(local_path.clone(), s3_path, None)
-                    .await;
-
-                item.job_id = Some(job_id);
-                item.transfer_state = TransferState::Pending;
-
-                // Store mapping for later lookup
-                job_item_map.lock().await.insert(
-                    job_id,
-                    TransferJobInfo::Upload { item: item.clone() },
-                );
-
-                updated_items.push(item);
+            // Skip items that already have a job_id (already enqueued)
+            // Skip directories (only files can be uploaded)
+            if item.job_id.is_some() || item.is_directory {
+                continue;
             }
+
+            let local_path = item.path.clone();
+            let s3_path = if item.destination_path.is_empty() {
+                item.name.clone()
+            } else {
+                format!("{}/{}", item.destination_path, item.name)
+            };
+
+            let job_id = transfer_manager
+                .enqueue_upload(local_path.clone(), s3_path, None)
+                .await;
+
+            item.job_id = Some(job_id);
+            item.transfer_state = TransferState::Pending;
+
+            // Store mapping for later lookup
+            job_item_map.lock().await.insert(
+                job_id,
+                TransferJobInfo::Upload { item: item.clone() },
+            );
+
+            updated_items.push(item);
         }
         updated_items
     }
 
     /// Spawn the transfer worker that processes jobs from the TransferManager
+    /// Each transfer is spawned as a separate task for true concurrency
     async fn spawn_transfer_worker(
         task_registry: &TaskRegistry,
         transfer_manager: Arc<TransferManager>,
@@ -147,8 +161,8 @@ impl StateStore {
     ) {
         task_registry.spawn_tracked("transfer-worker", async move {
             loop {
-                // Try to get the next job
-                if let Some(job) = transfer_manager.try_get_next().await {
+                // Try to get the next job (semaphore in TransferManager limits concurrency)
+                if let Some((job, pause_signal)) = transfer_manager.try_get_next().await {
                     let job_id = job.id;
                     let job_info = job_item_map.lock().await.get(&job_id).cloned();
 
@@ -159,23 +173,29 @@ impl StateStore {
                             let tm = transfer_manager.clone();
                             let tx = result_tx.clone();
 
-                            match fetcher.upload_item(item.clone(), up_tx).await {
-                                Ok(_) => {
-                                    tm.mark_completed(job_id).await;
-                                    let mut completed_item = item;
-                                    completed_item.transfer_state = TransferState::Completed;
-                                    let _ = tx.send(TransferResult::UploadComplete(completed_item));
+                            // Spawn upload as a separate task for concurrent execution
+                            tokio::spawn(async move {
+                                match fetcher.upload_item(item.clone(), up_tx, Some(pause_signal)).await {
+                                    Ok(_) => {
+                                        tm.mark_completed(job_id).await;
+                                        let mut completed_item = item;
+                                        completed_item.transfer_state = TransferState::Completed;
+                                        let _ = tx.send(TransferResult::UploadComplete(completed_item));
+                                    }
+                                    Err(e) => {
+                                        let error_msg = e.to_string();
+                                        // Check if this was a pause (not a real failure)
+                                        if !error_msg.contains("paused") {
+                                            tm.mark_failed(job_id, error_msg.clone()).await;
+                                            let mut failed_item = item;
+                                            failed_item.transfer_state =
+                                                TransferState::Failed(error_msg.clone());
+                                            let _ =
+                                                tx.send(TransferResult::UploadFailed(failed_item, error_msg));
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    let error_msg = e.to_string();
-                                    tm.mark_failed(job_id, error_msg.clone()).await;
-                                    let mut failed_item = item;
-                                    failed_item.transfer_state =
-                                        TransferState::Failed(error_msg.clone());
-                                    let _ =
-                                        tx.send(TransferResult::UploadFailed(failed_item, error_msg));
-                                }
-                            }
+                            });
                         }
                         Some(TransferJobInfo::Download { item }) => {
                             let down_tx = download_progress_tx.clone();
@@ -183,27 +203,32 @@ impl StateStore {
                             let tm = transfer_manager.clone();
                             let tx = result_tx.clone();
 
-                            match fetcher.download_item(item.clone(), down_tx).await {
-                                Ok(_) => {
-                                    tm.mark_completed(job_id).await;
-                                    let mut completed_item = item;
-                                    completed_item.transfer_state = TransferState::Completed;
-                                    let _ =
-                                        tx.send(TransferResult::DownloadComplete(completed_item));
+                            // Spawn download as a separate task for concurrent execution
+                            tokio::spawn(async move {
+                                match fetcher.download_item(item.clone(), down_tx, Some(pause_signal)).await {
+                                    Ok(_) => {
+                                        tm.mark_completed(job_id).await;
+                                        let mut completed_item = item;
+                                        completed_item.transfer_state = TransferState::Completed;
+                                        let _ =
+                                            tx.send(TransferResult::DownloadComplete(completed_item));
+                                    }
+                                    Err(e) => {
+                                        let error_msg = e.to_string();
+                                        // Check if this was a pause (not a real failure)
+                                        if !error_msg.contains("paused") {
+                                            tm.mark_failed(job_id, error_msg.clone()).await;
+                                            let mut failed_item = item;
+                                            failed_item.transfer_state =
+                                                TransferState::Failed(error_msg.clone());
+                                            let _ = tx
+                                                .send(TransferResult::DownloadFailed(failed_item, error_msg));
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    let error_msg = e.to_string();
-                                    tm.mark_failed(job_id, error_msg.clone()).await;
-                                    let mut failed_item = item;
-                                    failed_item.transfer_state =
-                                        TransferState::Failed(error_msg.clone());
-                                    let _ = tx
-                                        .send(TransferResult::DownloadFailed(failed_item, error_msg));
-                                }
-                            }
+                            });
                         }
                         None => {
-                            // Job info not found, skip
                             tracing::warn!("Job info not found for job_id: {}", job_id);
                         }
                     }
@@ -248,7 +273,6 @@ impl StateStore {
         s3_data_fetcher: S3DataFetcher,
         s3_full_list_tx: UnboundedSender<(Option<String>, Option<String>, Vec<S3DataItem>)>,
     ) {
-        tracing::info!("list_s3_Data_recursive");
         let task_name = format!("list-s3-recursive:{}", item.name);
         self.task_registry.spawn_tracked(task_name, async move {
             let bucket_name = if item.is_bucket {
@@ -266,7 +290,6 @@ impl StateStore {
                 .await
             {
                 Ok(data) => {
-                    tracing::info!("Downloaded items: {}", data.len());
                     let _ = s3_full_list_tx.send((Some(bucket_name), path.clone(), data));
                 }
                 Err(e) => {
@@ -433,12 +456,20 @@ impl StateStore {
         }).await;
     }
 
-    fn get_current_s3_fetcher(state: &State) -> S3DataFetcher {
-        S3DataFetcher::new(state.current_creds.clone())
+    fn get_current_s3_fetcher(
+        state: &State,
+        transfer_state_store: &Option<Arc<TransferStateStore>>,
+    ) -> S3DataFetcher {
+        let fetcher = S3DataFetcher::new(state.current_creds.clone());
+        if let Some(store) = transfer_state_store {
+            fetcher.with_transfer_state_store(store.clone())
+        } else {
+            fetcher
+        }
     }
 
     pub async fn main_loop(
-        self,
+        mut self,
         mut terminator: Terminator,
         mut action_rx: UnboundedReceiver<Action>,
         mut interrupt_rx: broadcast::Receiver<Interrupted>,
@@ -449,8 +480,29 @@ impl StateStore {
         let job_item_map: Arc<Mutex<HashMap<JobId, TransferJobInfo>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
+        // Initialize the transfer state store for resumable transfers
+        let transfer_state_store: Option<Arc<TransferStateStore>> =
+            match TransferStateStore::new(get_data_dir()).await {
+                Ok(store) => {
+                    let (uploads, downloads) = store.get_pending_counts().await;
+                    if uploads > 0 || downloads > 0 {
+                        tracing::info!(
+                            "Found {} pending uploads and {} pending downloads from previous session",
+                            uploads,
+                            downloads
+                        );
+                    }
+                    Some(Arc::new(store))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize transfer state store: {}", e);
+                    None
+                }
+            };
+        self.transfer_state_store = transfer_state_store.clone();
+
         let mut state = State::new(creds.clone());
-        let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+        let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
         state.set_s3_loading(true);
         state.set_current_local_path(
             dirs::home_dir()
@@ -459,6 +511,20 @@ impl StateStore {
                 .to_string_lossy()
                 .to_string(),
         );
+
+        // Initialize transfer persistence and load any pending transfers from previous session
+        let transfer_persistence = Arc::new(TransferPersistence::new(get_data_dir()));
+        if let Ok(persisted) = transfer_persistence.load().await {
+            if !persisted.s3_selected_items.is_empty() || !persisted.local_selected_items.is_empty() {
+                tracing::info!(
+                    "Restoring {} downloads and {} uploads from previous session",
+                    persisted.s3_selected_items.len(),
+                    persisted.local_selected_items.len()
+                );
+                state.s3_selected_items = persisted.s3_selected_items;
+                state.local_selected_items = persisted.local_selected_items;
+            }
+        }
 
         let (s3_tx, mut s3_rx) =
             mpsc::unbounded_channel::<(Option<String>, Option<String>, Vec<S3DataItem>)>();
@@ -510,25 +576,45 @@ impl StateStore {
             tokio::select! {
                         Some(action) = action_rx.recv() => match action {
                             Action::Exit => {
+                                // Save pending transfers before exiting
+                                if let Err(e) = transfer_persistence.save(
+                                    &state.s3_selected_items,
+                                    &state.local_selected_items
+                                ).await {
+                                    tracing::warn!("Failed to save pending transfers: {}", e);
+                                }
                                 let _ = terminator.terminate(Interrupted::UserInt);
                                 break Interrupted::UserInt;
                             },
                             Action::Navigate { page} => {
-                                state.set_active_page(page);
+                                state.set_active_page(page.clone());
                                 let _ = self.state_tx.send(state.clone()).await;
+                                // When navigating to FileManager, refresh S3 data to ensure view is up-to-date
+                                // This handles cases where auto-refresh changed the data while on another page
+                                if page == ActivePage::FileManager {
+                                    state.set_s3_loading(true);
+                                    let _ = self.state_tx.send(state.clone()).await;
+                                    let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
+                                    self.fetch_s3_data(
+                                        state.current_s3_bucket.clone(),
+                                        state.current_s3_path.clone(),
+                                        s3_data_fetcher,
+                                        s3_tx.clone()
+                                    ).await;
+                                }
                             }
                             Action::FetchLocalData { path} =>
                                 self.fetch_local_data(Some(path), local_data_fetcher.clone(), local_tx.clone()).await,
                             Action::FetchS3Data { bucket, prefix } => {
                                 state.set_s3_loading(true);
                                 let _ = self.state_tx.send(state.clone()).await;
-                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                 self.fetch_s3_data(bucket, prefix, s3_data_fetcher, s3_tx.clone()).await
                             }
                             Action::ListS3DataRecursiveForItem { item } => {
                                 state.set_s3_list_recursive_loading(true);
                                 let _ = self.state_tx.send(state.clone()).await;
-                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                 self.list_s3_data_recursive(item, s3_data_fetcher, s3_full_list_tx.clone()).await
                             }
                             Action::MoveBackLocal => self.move_back_local_data(state.current_local_path.clone(), local_data_fetcher.clone(), local_tx.clone()).await,
@@ -576,16 +662,20 @@ impl StateStore {
                                 }
 
                                 self.state_tx.send(state.clone()).await?;
+                                // Save transfers after queueing
+                                let _ = transfer_persistence.save(
+                                    &state.s3_selected_items,
+                                    &state.local_selected_items
+                                ).await;
                             },
                             Action::SelectCurrentS3Creds { item} => {
                                 state.set_current_s3_creds(item);
                                 let _ = self.state_tx.send(state.clone()).await;
-                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                 self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
                             },
                             Action::DeleteS3Item { item} => {
-                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                                tracing::info!("deleting s3 item...{:?}", item.clone());
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                 self.delete_s3_data(item.clone(), s3_data_fetcher.clone(), s3_deleted_tx.clone()).await;
                                 if item.is_bucket {
                                     self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
@@ -600,8 +690,7 @@ impl StateStore {
                                 self.fetch_local_data(Some(item.path.clone()), local_data_fetcher.clone(), local_tx.clone()).await;
                             },
                             Action::CreateBucket {name} => {
-                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
-                                tracing::info!("creating s3 bucket...{:?}", name.clone());
+                                let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                 self.create_bucket(name.clone(), s3_data_fetcher.clone(), create_bucket_tx.clone()).await;
                                 self.fetch_s3_data(None, None, s3_data_fetcher, s3_tx.clone()).await;
                             },
@@ -638,6 +727,11 @@ impl StateStore {
                                     // Update state to reflect paused status
                                     state.set_transfer_paused(job_id);
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers to persist paused state
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 }
                             },
                             Action::ResumeTransfer { job_id } => {
@@ -658,6 +752,11 @@ impl StateStore {
                                     // Remove from job map
                                     job_item_map.lock().await.remove(&job_id);
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers (cancelled items won't be persisted)
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 }
                             },
                         },
@@ -668,14 +767,24 @@ impl StateStore {
                                     state.update_selected_local_transfers(item);
                                     // Auto-refresh S3 view when all uploads to a bucket complete
                                     if state.all_uploads_complete_for_bucket(&dest_bucket) {
-                                        let s3_data_fetcher = Self::get_current_s3_fetcher(&state);
+                                        let s3_data_fetcher = Self::get_current_s3_fetcher(&state, &transfer_state_store);
                                         self.fetch_s3_data(Some(dest_bucket), None, s3_data_fetcher, s3_tx.clone()).await;
                                     }
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers (completed items won't be persisted)
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 },
                                 TransferResult::UploadFailed(item, _error) => {
                                     state.update_selected_local_transfers(item);
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers (failed items won't be persisted)
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 },
                                 TransferResult::DownloadComplete(item) => {
                                     let dest_dir = item.destination_dir.clone();
@@ -685,10 +794,20 @@ impl StateStore {
                                         self.fetch_local_data(Some(dest_dir), local_data_fetcher.clone(), local_tx.clone()).await;
                                     }
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers (completed items won't be persisted)
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 },
                                 TransferResult::DownloadFailed(item, _error) => {
                                     state.update_selected_s3_transfers(item);
                                     self.state_tx.send(state.clone()).await?;
+                                    // Save transfers (failed items won't be persisted)
+                                    let _ = transfer_persistence.save(
+                                        &state.s3_selected_items,
+                                        &state.local_selected_items
+                                    ).await;
                                 },
                             }
                         },

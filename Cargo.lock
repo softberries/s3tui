@@ -2868,7 +2868,7 @@ checksum = "e86697c916019a8588c99b5fac3cead74ec0b4b819707a682fd4d23fa0ce1ba1"
 
 [[package]]
 name = "s3tui"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
@@ -2895,6 +2895,8 @@ dependencies = [
  "pin-project",
  "rand",
  "ratatui",
+ "serde",
+ "serde_json",
  "signal-hook",
  "strip-ansi-escapes",
  "tempfile",

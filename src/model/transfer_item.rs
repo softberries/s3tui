@@ -37,9 +37,18 @@ impl TransferItem {
     const PROGRESS_BAR_WIDTH: usize = 8;
 
     pub fn to_columns(&self) -> Vec<String> {
-        let progress_pct = self.transfer_state.progress();
-        let progress_bar = format_progress_bar(progress_pct, Self::PROGRESS_BAR_WIDTH);
-        let progress = format!("{} {:>5.1}%", progress_bar, progress_pct);
+        let progress = if self.transfer_state.is_cancelled() {
+            "Cancelled".to_string()
+        } else if self.transfer_state.is_paused() {
+            let progress_pct = self.transfer_state.progress();
+            format!("Paused {:>5.1}%", progress_pct)
+        } else if self.transfer_state.is_completed() {
+            "Completed".to_string()
+        } else {
+            let progress_pct = self.transfer_state.progress();
+            let progress_bar = format_progress_bar(progress_pct, Self::PROGRESS_BAR_WIDTH);
+            format!("{} {:>5.1}%", progress_bar, progress_pct)
+        };
         let error = self
             .transfer_state
             .error()

@@ -6,17 +6,27 @@
 //! - Pause/resume/cancel functionality
 //! - Priority adjustment
 
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 
+/// Signal used to pause/cancel a running transfer
+pub type PauseSignal = Arc<AtomicBool>;
+
 /// Unique identifier for a transfer job
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct JobId(u64);
 
 impl JobId {
     fn new(id: u64) -> Self {
+        JobId(id)
+    }
+}
+
+impl From<u64> for JobId {
+    fn from(id: u64) -> Self {
         JobId(id)
     }
 }
@@ -135,6 +145,8 @@ pub struct TransferManager {
     history: Arc<Mutex<Vec<TransferJob>>>,
     /// Semaphore for concurrency control
     semaphore: Arc<Semaphore>,
+    /// Pause signals for active jobs - set to true to signal task to stop
+    pause_signals: Arc<Mutex<HashMap<JobId, PauseSignal>>>,
 }
 
 impl TransferManager {
@@ -147,6 +159,7 @@ impl TransferManager {
             paused: Arc::new(Mutex::new(Vec::new())),
             history: Arc::new(Mutex::new(Vec::new())),
             semaphore: Arc::new(Semaphore::new(concurrency)),
+            pause_signals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -171,22 +184,48 @@ impl TransferManager {
         job_id
     }
 
-    /// Pause a transfer (move from active to paused)
+    /// Pause a transfer (move from active or pending to paused)
+    /// For active transfers, this also signals the running task to stop
     pub async fn pause(&self, job_id: JobId) -> Result<(), String> {
-        let mut active = self.active.lock().await;
-        if let Some(pos) = active.iter().position(|j| j.id == job_id) {
-            let mut job = active.remove(pos);
-            if let TransferStatus::Active { progress } = job.status {
-                job.status = TransferStatus::Paused { progress };
+        // First try active list
+        {
+            let mut active = self.active.lock().await;
+            if let Some(pos) = active.iter().position(|j| j.id == job_id) {
+                let mut job = active.remove(pos);
+                if let TransferStatus::Active { progress } = job.status {
+                    job.status = TransferStatus::Paused { progress };
+                }
+                self.paused.lock().await.push(job);
+
+                // Signal the running task to stop
+                if let Some(signal) = self.pause_signals.lock().await.remove(&job_id) {
+                    signal.store(true, Ordering::SeqCst);
+                }
+
+                // Release the concurrency slot so other jobs can run
+                drop(active);
+                self.release_slot();
+                return Ok(());
             }
-            self.paused.lock().await.push(job);
-            // Release the concurrency slot so other jobs can run
-            drop(active);
-            self.release_slot();
-            Ok(())
-        } else {
-            Err(format!("Job {} is not active", job_id))
         }
+
+        // Also check pending queue (job might be resumed but not yet picked up by worker)
+        {
+            let mut pending = self.pending.lock().await;
+            if let Some(job) = pending.remove(job_id) {
+                let progress = match job.status {
+                    TransferStatus::Active { progress } => progress,
+                    TransferStatus::Queued => 0.0,
+                    _ => 0.0,
+                };
+                let mut paused_job = job;
+                paused_job.status = TransferStatus::Paused { progress };
+                self.paused.lock().await.push(paused_job);
+                return Ok(());
+            }
+        }
+
+        Err(format!("Job {} is not active or pending", job_id))
     }
 
     /// Resume a paused transfer (move from paused back to pending queue front)
@@ -235,13 +274,17 @@ impl TransferManager {
             }
         }
 
-        // Try to remove from active (need to release slot)
+        // Try to remove from active (need to release slot and signal task to stop)
         {
             let mut active = self.active.lock().await;
             if let Some(pos) = active.iter().position(|j| j.id == job_id) {
                 let mut job = active.remove(pos);
                 job.status = TransferStatus::Cancelled;
                 self.history.lock().await.push(job);
+                // Signal the running task to stop
+                if let Some(signal) = self.pause_signals.lock().await.remove(&job_id) {
+                    signal.store(true, Ordering::SeqCst);
+                }
                 drop(active); // Release lock before adding permit
                 self.release_slot();
                 return Ok(());
@@ -258,6 +301,8 @@ impl TransferManager {
             let mut job = active.remove(pos);
             job.status = TransferStatus::Completed;
             self.history.lock().await.push(job);
+            // Clean up pause signal
+            self.pause_signals.lock().await.remove(&job_id);
             // Release the concurrency slot
             drop(active); // Release lock before adding permit
             self.release_slot();
@@ -271,6 +316,8 @@ impl TransferManager {
             let mut job = active.remove(pos);
             job.status = TransferStatus::Failed { error };
             self.history.lock().await.push(job);
+            // Clean up pause signal
+            self.pause_signals.lock().await.remove(&job_id);
             // Release the concurrency slot
             drop(active); // Release lock before adding permit
             self.release_slot();
@@ -279,7 +326,8 @@ impl TransferManager {
 
     /// Get the next job to process (if concurrency allows)
     /// Returns None if no jobs are pending or concurrency limit is reached
-    pub async fn try_get_next(&self) -> Option<TransferJob> {
+    /// Returns the job and a pause signal that can be used to stop the transfer
+    pub async fn try_get_next(&self) -> Option<(TransferJob, PauseSignal)> {
         // Check if we can acquire a permit (don't actually acquire yet)
         let available = self.semaphore.available_permits();
         if available == 0 {
@@ -299,8 +347,17 @@ impl TransferManager {
             std::mem::forget(_permit);
 
             job.status = TransferStatus::Active { progress: 0.0 };
+            let job_id = job.id;
             self.active.lock().await.push(job.clone());
-            Some(job)
+
+            // Create a pause signal for this job
+            let pause_signal = Arc::new(AtomicBool::new(false));
+            self.pause_signals
+                .lock()
+                .await
+                .insert(job_id, pause_signal.clone());
+
+            Some((job, pause_signal))
         } else {
             None
         }
@@ -334,13 +391,13 @@ mod tests {
         let id3 = manager.enqueue_upload("file3".into(), "s3/file3".into(), None).await;
 
         // Should come out in FIFO order
-        let job1 = manager.try_get_next().await.unwrap();
+        let (job1, _) = manager.try_get_next().await.unwrap();
         assert_eq!(job1.id, id1);
 
-        let job2 = manager.try_get_next().await.unwrap();
+        let (job2, _) = manager.try_get_next().await.unwrap();
         assert_eq!(job2.id, id2);
 
-        let job3 = manager.try_get_next().await.unwrap();
+        let (job3, _) = manager.try_get_next().await.unwrap();
         assert_eq!(job3.id, id3);
     }
 
@@ -351,7 +408,7 @@ mod tests {
         let job_id = manager.enqueue_upload("file".into(), "s3/file".into(), None).await;
 
         // Start the job
-        let job = manager.try_get_next().await.unwrap();
+        let (job, _) = manager.try_get_next().await.unwrap();
         assert_eq!(job.id, job_id);
 
         // Pause
@@ -361,7 +418,36 @@ mod tests {
         manager.resume(job_id).await.unwrap();
 
         // Job should be back in pending queue - can get it again
-        let job = manager.try_get_next().await.unwrap();
+        let (job, _) = manager.try_get_next().await.unwrap();
+        assert_eq!(job.id, job_id);
+    }
+
+    #[tokio::test]
+    async fn test_pause_immediately_after_resume() {
+        let manager = TransferManager::new(4);
+
+        let job_id = manager.enqueue_upload("file".into(), "s3/file".into(), None).await;
+
+        // Start the job
+        let (job, _) = manager.try_get_next().await.unwrap();
+        assert_eq!(job.id, job_id);
+
+        // Pause
+        manager.pause(job_id).await.unwrap();
+
+        // Resume - job goes to pending queue
+        manager.resume(job_id).await.unwrap();
+
+        // Immediately pause again (before worker picks it up)
+        // This should work - job is in pending queue
+        manager.pause(job_id).await.unwrap();
+
+        // Job should now be in paused state, not in pending
+        assert!(manager.try_get_next().await.is_none());
+
+        // Resume again and verify it can be retrieved
+        manager.resume(job_id).await.unwrap();
+        let (job, _) = manager.try_get_next().await.unwrap();
         assert_eq!(job.id, job_id);
     }
 
