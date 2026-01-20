@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
+- Improve status line with more context, change help screen to overlay *(ui)*([ec287e3](https://github.com/softberries/s3tui/commit/ec287e3454f38c1c6b092bcc69e3d5d4e65e3305))
+
+
+### Refactoring
+
+- Decouple s3 client creation *(client)*([afec8f2](https://github.com/softberries/s3tui/commit/afec8f29fe4b828d63cd4cfcc95272143f38344a))
+
+- Implement Bounded Channels for backpressure *(tasks)*([bd86182](https://github.com/softberries/s3tui/commit/bd86182520932e7ab83fca97f23a5ebeea63d80b))
+
+- Improve tokio tasks management *(tasks)*([08e12b8](https://github.com/softberries/s3tui/commit/08e12b8527b661681a33a2669fc825b19b103ac3))
+
+- Refactor the whole transfer logic and encapsulate it in transfer manager *(transfers)*([36d1a36](https://github.com/softberries/s3tui/commit/36d1a362d92cddad76e286f517e25d21867df8f2))
+
+
+### Features
+
+- Improve status line with more context, change help screen to overlay *(ui)*([ec287e3](https://github.com/softberries/s3tui/commit/ec287e3454f38c1c6b092bcc69e3d5d4e65e3305))
+
+
+### Features
+
 - Add sorting on s3 and local components by name (f1), size (f2) and type (f3)([f2730bd](https://github.com/softberries/s3tui/commit/f2730bd8679e06ae2658a9856650ad4282161d00))
 
 
