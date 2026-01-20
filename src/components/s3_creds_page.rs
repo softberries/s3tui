@@ -1,4 +1,5 @@
 use crate::components::component::{Component, ComponentRender};
+use crate::components::widgets::QuitConfirmation;
 use crate::model::action::Action;
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
@@ -29,6 +30,7 @@ pub struct S3CredsPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
     show_shortcuts_overlay: bool,
+    show_quit_confirmation: bool,
 }
 
 impl Component for S3CredsPage {
@@ -41,6 +43,7 @@ impl Component for S3CredsPage {
             // set the props
             props: Props::from(state),
             show_shortcuts_overlay: false,
+            show_quit_confirmation: false,
         }
         .move_with_state(state)
     }
@@ -56,12 +59,25 @@ impl Component for S3CredsPage {
                 ..new_props
             },
             show_shortcuts_overlay: self.show_shortcuts_overlay,
+            show_quit_confirmation: self.show_quit_confirmation,
             ..self
         }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
+            return;
+        }
+
+        // Handle quit confirmation
+        if self.show_quit_confirmation {
+            if let Some(confirmed) = QuitConfirmation::handle_key_event(key) {
+                if confirmed {
+                    let _ = self.action_tx.send(Action::Exit);
+                } else {
+                    self.show_quit_confirmation = false;
+                }
+            }
             return;
         }
 
@@ -81,7 +97,7 @@ impl Component for S3CredsPage {
             KeyCode::Char('k') | KeyCode::Up => self.move_up_creds_table_selection(),
             KeyCode::Enter => self.set_current_s3_account(),
             KeyCode::Char('q') => {
-                let _ = self.action_tx.send(Action::Exit);
+                self.show_quit_confirmation = true;
             }
             KeyCode::Char('?') => {
                 self.show_shortcuts_overlay = true;
@@ -259,8 +275,12 @@ impl ComponentRender<()> for S3CredsPage {
             &mut self.props.clone().creds_table_state,
         );
 
+        // Show quit confirmation overlay
+        if self.show_quit_confirmation {
+            QuitConfirmation::render(frame);
+        }
         // Show keyboard shortcuts overlay
-        if self.show_shortcuts_overlay {
+        else if self.show_shortcuts_overlay {
             let area = Self::centered_rect(50, 40, frame.area());
             frame.render_widget(Clear, area);
             let table = self.make_shortcuts_overlay();
@@ -304,9 +324,20 @@ mod tests {
         let state = State::new(vec![creds.clone()]);
         let mut component = S3CredsPage::new(&state, tx);
 
-        // Simulate pressing 'q'
+        // Simulate pressing 'q' shows quit confirmation
+        assert!(!component.show_quit_confirmation, "Quit confirmation should be hidden initially");
         component.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()));
+        assert!(component.show_quit_confirmation, "Quit confirmation should be shown after pressing q");
+
+        // Simulate pressing Enter to confirm quit
+        component.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
         assert_eq!(rx.recv().await.unwrap(), Action::Exit);
+
+        // Reset for next test
+        component.show_quit_confirmation = true;
+        // Simulate pressing Esc to cancel quit
+        component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+        assert!(!component.show_quit_confirmation, "Quit confirmation should be hidden after pressing Esc");
 
         // Simulate pressing '?' to show overlay
         assert!(!component.show_shortcuts_overlay, "Overlay should be hidden initially");

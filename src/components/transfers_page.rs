@@ -1,4 +1,5 @@
 use crate::components::component::{Component, ComponentRender};
+use crate::components::widgets::QuitConfirmation;
 use crate::model::action::Action;
 use crate::model::has_children::flatten_items;
 use crate::model::local_selected_item::LocalSelectedItem;
@@ -50,6 +51,7 @@ pub struct TransfersPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
     show_shortcuts_overlay: bool,
+    show_quit_confirmation: bool,
 }
 
 impl Component for TransfersPage {
@@ -62,6 +64,7 @@ impl Component for TransfersPage {
             // set the props
             props: Props::from(state),
             show_shortcuts_overlay: false,
+            show_quit_confirmation: false,
         }
         .move_with_state(state)
     }
@@ -77,12 +80,25 @@ impl Component for TransfersPage {
                 ..new_props
             },
             show_shortcuts_overlay: self.show_shortcuts_overlay,
+            show_quit_confirmation: self.show_quit_confirmation,
             ..self
         }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
+            return;
+        }
+
+        // Handle quit confirmation
+        if self.show_quit_confirmation {
+            if let Some(confirmed) = QuitConfirmation::handle_key_event(key) {
+                if confirmed {
+                    let _ = self.action_tx.send(Action::Exit);
+                } else {
+                    self.show_quit_confirmation = false;
+                }
+            }
             return;
         }
 
@@ -125,7 +141,7 @@ impl Component for TransfersPage {
                 });
             }
             KeyCode::Char('q') => {
-                let _ = self.action_tx.send(Action::Exit);
+                self.show_quit_confirmation = true;
             }
             KeyCode::Char('?') => {
                 self.show_shortcuts_overlay = true;
@@ -546,8 +562,12 @@ impl ComponentRender<()> for TransfersPage {
         frame.render_widget(status_line, status_line_layout[0]);
         frame.render_widget(help_line, status_line_layout[1]);
 
+        // Show quit confirmation overlay
+        if self.show_quit_confirmation {
+            QuitConfirmation::render(frame);
+        }
         // Show keyboard shortcuts overlay
-        if self.show_shortcuts_overlay {
+        else if self.show_shortcuts_overlay {
             let area = Self::centered_rect(50, 50, frame.area());
             frame.render_widget(Clear, area);
             let table = self.make_shortcuts_overlay();
@@ -584,9 +604,19 @@ mod tests {
             "Should send RunTransfers action"
         );
 
-        // Test 'q' key for exit action
+        // Test 'q' key shows quit confirmation
+        assert!(!page.show_quit_confirmation, "Quit confirmation should be hidden initially");
         page.handle_key_event(KeyEvent {
             code: KeyCode::Char('q'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert!(page.show_quit_confirmation, "Quit confirmation should be shown after pressing q");
+
+        // Test Enter in quit confirmation sends Exit
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Enter,
             kind: KeyEventKind::Press,
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
@@ -594,8 +624,19 @@ mod tests {
         assert_eq!(
             rx.recv().await.unwrap(),
             Action::Exit,
-            "Should send Exit action"
+            "Should send Exit action after confirming"
         );
+
+        // Reset for next test - show quit confirmation again
+        page.show_quit_confirmation = true;
+        // Test Esc cancels quit confirmation
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Esc,
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert!(!page.show_quit_confirmation, "Quit confirmation should be hidden after pressing Esc");
 
         // Test 's' key for navigation to S3Creds page
         page.handle_key_event(KeyEvent {

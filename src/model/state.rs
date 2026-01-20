@@ -284,62 +284,118 @@ impl State {
         }
     }
 
-    /*
-    The url can look smth like this:
-    "https://maluchyplywaja.s3.eu-west-1.amazonaws.com/IMG_8123.HEIC?x-id=PutObject"
-     */
+    /// Update progress for a local item being uploaded.
+    ///
+    /// The uri can be in two formats:
+    /// 1. Full URL from simple uploads: "https://bucket.s3.region.amazonaws.com/key?x-id=PutObject"
+    /// 2. Just the S3 key from multipart uploads: "path/to/file.txt"
     fn update_local_item_with_progress(&mut self, progress_item: &UploadProgressItem) {
-        let url = match Url::parse(progress_item.uri.as_str()) {
-            Ok(url) => url,
-            Err(_) => return,
-        };
-        let host = url.host_str().unwrap_or_default();
-        let path_segments: Vec<&str> = url
-            .path_segments()
-            .map(|c| c.collect::<Vec<_>>())
-            .unwrap_or_default();
+        // Try to parse as URL (format from simple uploads via ProgressBody)
+        if let Ok(url) = Url::parse(progress_item.uri.as_str()) {
+            let host = url.host_str().unwrap_or_default();
+            let path_segments: Vec<&str> = url
+                .path_segments()
+                .map(|c| c.collect::<Vec<_>>())
+                .unwrap_or_default();
 
-        // Detect URL style: path-style vs virtual-hosted-style
-        // Path-style: https://s3.region.amazonaws.com/bucket/key
-        // Virtual-hosted: https://bucket.s3.region.amazonaws.com/key
-        let host_parts: Vec<&str> = host.split('.').collect();
-        let is_path_style = host_parts.first().map(|s| s.starts_with("s3")).unwrap_or(false);
+            // Detect URL style: path-style vs virtual-hosted-style
+            // Path-style: https://s3.region.amazonaws.com/bucket/key
+            // Virtual-hosted: https://bucket.s3.region.amazonaws.com/key
+            let host_parts: Vec<&str> = host.split('.').collect();
+            let is_path_style = host_parts.first().map(|s| s.starts_with("s3")).unwrap_or(false);
 
-        let (bucket_name, name) = if is_path_style {
-            // Path-style: bucket is first path segment, key is the rest
-            let bucket = path_segments.first().unwrap_or(&"");
-            let key = path_segments.last().unwrap_or(&"");
-            (*bucket, *key)
+            let (bucket_name, name) = if is_path_style {
+                // Path-style: bucket is first path segment, key is the rest
+                let bucket = path_segments.first().unwrap_or(&"");
+                let key = path_segments.last().unwrap_or(&"");
+                (*bucket, *key)
+            } else {
+                // Virtual-hosted-style: bucket is first host segment
+                let bucket = host_parts.first().unwrap_or(&"");
+                let key = path_segments.last().unwrap_or(&"");
+                (*bucket, *key)
+            };
+            let decoded_name = decode_url_safe(name);
+
+            self.update_local_items_by_name(&decoded_name, bucket_name, progress_item.progress);
         } else {
-            // Virtual-hosted-style: bucket is first host segment
-            let bucket = host_parts.first().unwrap_or(&"");
-            let key = path_segments.last().unwrap_or(&"");
-            (*bucket, *key)
-        };
-        let decoded_name = decode_url_safe(name);
+            // Not a URL - this is the S3 key from multipart uploads
+            // The key might be the full path (e.g., "prefix/file.txt") or just filename
+            let key = &progress_item.uri;
+            // Extract filename from key for matching
+            let filename = key.rsplit('/').next().unwrap_or(key);
 
+            self.update_local_items_by_key(key, filename, progress_item.progress);
+        }
+    }
+
+    /// Update local items by matching bucket name and filename (for URL-based progress)
+    fn update_local_items_by_name(&mut self, decoded_name: &str, bucket_name: &str, progress: f64) {
         for item in &mut self.local_selected_items {
-            // Skip already-transferred items to avoid race conditions with late progress updates
-            if item.is_transferred() {
+            // Skip items in terminal states or paused/cancelled to preserve their state
+            if item.transfer_state.is_terminal() || item.transfer_state.is_paused() {
                 continue;
             }
 
             if item.children.is_none() {
-                if item.destination_bucket == *bucket_name && item.name == decoded_name {
-                    item.transfer_state = TransferState::InProgress(progress_item.progress);
+                if item.destination_bucket == bucket_name && item.name == decoded_name {
+                    item.transfer_state = TransferState::InProgress(progress);
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
-                    // Skip already-transferred children
-                    if child.is_transferred() {
+                    // Skip children in terminal states or paused/cancelled
+                    if child.transfer_state.is_terminal() || child.transfer_state.is_paused() {
                         continue;
                     }
-                    if child.destination_bucket == *bucket_name && child.name == decoded_name {
-                        child.transfer_state = TransferState::InProgress(progress_item.progress);
+                    if child.destination_bucket == bucket_name && child.name == decoded_name {
+                        child.transfer_state = TransferState::InProgress(progress);
                     }
                 }
-                let progress = calculate_overall_progress(children);
-                item.transfer_state = TransferState::InProgress(progress);
+                // Only update parent if it's not in a terminal/paused state
+                if !item.transfer_state.is_terminal() && !item.transfer_state.is_paused() {
+                    let overall = calculate_overall_progress(children);
+                    item.transfer_state = TransferState::InProgress(overall);
+                }
+            }
+        }
+    }
+
+    /// Update local items by matching S3 key or filename (for multipart upload progress)
+    fn update_local_items_by_key(&mut self, key: &str, filename: &str, progress: f64) {
+        for item in &mut self.local_selected_items {
+            // Skip items in terminal states or paused/cancelled to preserve their state
+            if item.transfer_state.is_terminal() || item.transfer_state.is_paused() {
+                continue;
+            }
+
+            if item.children.is_none() {
+                // Match by destination_path (S3 key) or by filename
+                let matches = item.destination_path == key
+                    || item.destination_path.ends_with(&format!("/{}", key))
+                    || item.name == filename
+                    || item.name == key;
+                if matches {
+                    item.transfer_state = TransferState::InProgress(progress);
+                }
+            } else if let Some(children) = &mut item.children {
+                for child in children.iter_mut() {
+                    // Skip children in terminal states or paused/cancelled
+                    if child.transfer_state.is_terminal() || child.transfer_state.is_paused() {
+                        continue;
+                    }
+                    let matches = child.destination_path == key
+                        || child.destination_path.ends_with(&format!("/{}", key))
+                        || child.name == filename
+                        || child.name == key;
+                    if matches {
+                        child.transfer_state = TransferState::InProgress(progress);
+                    }
+                }
+                // Only update parent if it's not in a terminal/paused state
+                if !item.transfer_state.is_terminal() && !item.transfer_state.is_paused() {
+                    let overall = calculate_overall_progress(children);
+                    item.transfer_state = TransferState::InProgress(overall);
+                }
             }
         }
     }
@@ -351,8 +407,8 @@ impl State {
             // Use path if available, otherwise fall back to name (matches download_item logic)
             let item_key = item.path.as_ref().unwrap_or(&item.name);
 
-            // Skip already-transferred items to avoid race conditions with late progress updates
-            if item.is_transferred() {
+            // Skip items in terminal states or paused/cancelled to preserve their state
+            if item.transfer_state.is_terminal() || item.transfer_state.is_paused() {
                 continue;
             }
 
@@ -362,8 +418,8 @@ impl State {
                 }
             } else if let Some(children) = &mut item.children {
                 for child in children.iter_mut() {
-                    // Skip already-transferred children
-                    if child.is_transferred() {
+                    // Skip children in terminal states or paused/cancelled
+                    if child.transfer_state.is_terminal() || child.transfer_state.is_paused() {
                         continue;
                     }
                     let child_key = child.path.as_ref().unwrap_or(&child.name);
@@ -371,8 +427,11 @@ impl State {
                         child.transfer_state = TransferState::InProgress(progress_item.progress);
                     }
                 }
-                let progress = calculate_overall_progress(children);
-                item.transfer_state = TransferState::InProgress(progress);
+                // Only update parent if it's not in a terminal/paused state
+                if !item.transfer_state.is_terminal() && !item.transfer_state.is_paused() {
+                    let progress = calculate_overall_progress(children);
+                    item.transfer_state = TransferState::InProgress(progress);
+                }
             }
         }
     }
@@ -989,6 +1048,118 @@ mod tests {
             50.0
         );
         assert_eq!(state.local_selected_items[0].transfer_state.progress(), 50.0);
+    }
+
+    #[test]
+    fn update_local_item_with_progress_handles_multipart_upload_key() {
+        // Multipart uploads send just the S3 key, not a full URL
+        let mut state = State::default();
+        let selected_item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "article-dump.sql".to_string(),
+            name: "article-dump.sql".into(),
+            path: "/home/user/article-dump.sql".into(),
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
+        };
+        state.local_selected_items = vec![selected_item];
+
+        // Multipart upload sends just the key (not a URL)
+        let progress_item = UploadProgressItem {
+            progress: 75.0,
+            uri: "article-dump.sql".into(),
+        };
+        state.update_local_item_with_progress(&progress_item);
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 75.0);
+    }
+
+    #[test]
+    fn update_local_item_with_progress_handles_multipart_upload_with_prefix() {
+        // Multipart uploads with S3 prefix
+        let mut state = State::default();
+        let selected_item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "backups/article-dump.sql".to_string(),
+            name: "article-dump.sql".into(),
+            path: "/home/user/article-dump.sql".into(),
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
+        };
+        state.local_selected_items = vec![selected_item];
+
+        // Multipart upload sends the full key with prefix
+        let progress_item = UploadProgressItem {
+            progress: 50.0,
+            uri: "backups/article-dump.sql".into(),
+        };
+        state.update_local_item_with_progress(&progress_item);
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 50.0);
+    }
+
+    #[test]
+    fn update_local_item_with_progress_preserves_paused_state() {
+        // Progress updates should NOT overwrite paused state
+        let mut state = State::default();
+        let selected_item = LocalSelectedItem {
+            destination_bucket: "test-bucket".into(),
+            destination_path: "file.sql".to_string(),
+            name: "file.sql".into(),
+            path: "/home/user/file.sql".into(),
+            is_directory: false,
+            s3_creds: Default::default(),
+            children: None,
+            transfer_state: TransferState::Paused(25.0), // Already paused at 25%
+            job_id: None,
+        };
+        state.local_selected_items = vec![selected_item];
+
+        // Progress update comes in at 50%
+        let progress_item = UploadProgressItem {
+            progress: 50.0,
+            uri: "file.sql".into(),
+        };
+        state.update_local_item_with_progress(&progress_item);
+
+        // State should still be Paused at 25%, not overwritten
+        assert!(state.local_selected_items[0].transfer_state.is_paused());
+        assert_eq!(state.local_selected_items[0].transfer_state.progress(), 25.0);
+    }
+
+    #[test]
+    fn update_s3_item_with_progress_preserves_paused_state() {
+        // Progress updates should NOT overwrite paused state for downloads
+        let mut state = State::default();
+        let selected_item = S3SelectedItem {
+            bucket: Some("test-bucket".to_string()),
+            name: "file.txt".into(),
+            path: Some("path/to/file.txt".into()),
+            is_directory: false,
+            is_bucket: false,
+            destination_dir: "/downloads".into(),
+            s3_creds: FileCredential::default(),
+            children: None,
+            transfer_state: TransferState::Paused(30.0), // Already paused at 30%
+            job_id: None,
+        };
+        state.s3_selected_items = vec![selected_item];
+
+        // Progress update comes in at 60%
+        let progress_item = DownloadProgressItem {
+            progress: 60.0,
+            bucket: "test-bucket".into(),
+            name: "path/to/file.txt".into(),
+        };
+        state.update_s3_item_with_progress(&progress_item);
+
+        // State should still be Paused at 30%, not overwritten
+        assert!(state.s3_selected_items[0].transfer_state.is_paused());
+        assert_eq!(state.s3_selected_items[0].transfer_state.progress(), 30.0);
     }
 
     #[test]

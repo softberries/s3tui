@@ -3,11 +3,12 @@ use crate::model::local_data_item::LocalDataItem;
 use crate::model::transfer_state::TransferState;
 use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Keeps the information about the selected file which is later displayed on the transfers page
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalSelectedItem {
     pub name: String,
     pub path: String,

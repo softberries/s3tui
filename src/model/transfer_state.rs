@@ -3,13 +3,14 @@
 //! This module provides a state machine representation for transfer lifecycle,
 //! preventing invalid states from being representable.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Represents the lifecycle state of a transfer operation.
 ///
 /// Using an enum instead of separate boolean/option fields ensures
 /// only valid state combinations are possible at compile time.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum TransferState {
     /// Transfer has not started yet
     #[default]

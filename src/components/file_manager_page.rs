@@ -1,4 +1,5 @@
 use crate::components::component::{Component, ComponentRender};
+use crate::components::widgets::QuitConfirmation;
 use crate::model::action::Action;
 use crate::model::error::{LocalError, S3Error};
 use crate::model::filtering::filter_items;
@@ -237,45 +238,6 @@ impl FileManagerPage {
         input
     }
 
-    fn make_quit_confirmation(&self) -> Paragraph<'_> {
-        Paragraph::new("Are you sure you want to quit?")
-            .style(Style::default().fg(Color::Yellow))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default())
-                    .title_top(Line::from(vec![Span::raw("| Quit |")]))
-                    .title_bottom(
-                        Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("quit", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ])
-                        .alignment(Alignment::Right),
-                    )
-                    .title_bottom(
-                        Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Green),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ])
-                        .alignment(Alignment::Left),
-                    ),
-            )
-    }
-
     fn make_shortcuts_overlay(&self) -> Table<'_> {
         let shortcuts = vec![
             ("Tab / ← →", "Switch between panels"),
@@ -390,8 +352,13 @@ impl FileManagerPage {
         .height(1)
         .bottom_margin(0);
 
-        // Filter items based on search query
-        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
+        // Filter items based on search query - only if local panel is selected
+        let search_query = if !self.s3_panel_selected {
+            &self.props.search_query
+        } else {
+            &String::new()
+        };
+        let filtered_items = filter_items(&self.props.local_data, search_query);
         let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_local_row(self, item, focus_color));
@@ -556,8 +523,13 @@ impl FileManagerPage {
         .height(1)
         .bottom_margin(0);
 
-        // Filter items based on search query
-        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
+        // Filter items based on search query - only if S3 panel is selected
+        let search_query = if self.s3_panel_selected {
+            &self.props.search_query
+        } else {
+            &String::new()
+        };
+        let filtered_items = filter_items(&self.props.s3_data, search_query);
         let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_s3_row(self, item, focus_color));
@@ -1175,14 +1147,12 @@ impl Component for FileManagerPage {
                 }
             }
         } else if self.show_quit_confirmation {
-            match key.code {
-                KeyCode::Enter => {
+            if let Some(confirmed) = QuitConfirmation::handle_key_event(key) {
+                if confirmed {
                     let _ = self.action_tx.send(Action::Exit);
-                }
-                KeyCode::Esc => {
+                } else {
                     self.show_quit_confirmation = false;
                 }
-                _ => {}
             }
         } else if self.show_shortcuts_overlay {
             match key.code {
@@ -1489,11 +1459,7 @@ impl ComponentRender<()> for FileManagerPage {
                 area.y + 1,
             ));
         } else if self.show_quit_confirmation {
-            // Show quit confirmation popup
-            let area = Self::centered_rect(40, 15, frame.area());
-            frame.render_widget(Clear, area);
-            let block = self.make_quit_confirmation();
-            frame.render_widget(block, area);
+            QuitConfirmation::render(frame);
         } else if self.show_shortcuts_overlay {
             // Show keyboard shortcuts overlay
             let area = Self::centered_rect(50, 60, frame.area());
