@@ -1,6 +1,7 @@
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
 use crate::model::transfer_state::TransferState;
+use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
 use crate::utils::format_progress_bar;
 use std::time::Instant;
@@ -15,6 +16,8 @@ pub struct TransferItem {
     pub destination_dir: String,
     pub s3_creds: FileCredential,
     pub transfer_state: TransferState,
+    /// Job ID assigned by TransferManager when queued
+    pub job_id: Option<JobId>,
     /// Total size of the file in bytes (0 if unknown)
     /// Note: Currently unused - infrastructure for future byte-level tracking
     #[allow(dead_code)]
@@ -62,6 +65,7 @@ impl TransferItem {
             destination_dir: item.destination_dir,
             s3_creds: item.s3_creds,
             transfer_state: item.transfer_state,
+            job_id: item.job_id,
             total_bytes: 0,
             bytes_transferred: 0,
             started_at: None,
@@ -77,6 +81,7 @@ impl TransferItem {
             destination_dir: item.destination_path,
             s3_creds: item.s3_creds,
             transfer_state: item.transfer_state,
+            job_id: item.job_id,
             total_bytes: 0,
             bytes_transferred: 0,
             started_at: None,
@@ -111,6 +116,16 @@ impl TransferItem {
     /// Returns true if the transfer has completed successfully
     pub fn is_transferred(&self) -> bool {
         self.transfer_state.is_completed()
+    }
+
+    /// Returns true if the transfer is paused
+    pub fn is_paused(&self) -> bool {
+        self.transfer_state.is_paused()
+    }
+
+    /// Returns true if the transfer was cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.transfer_state.is_cancelled()
     }
 
     /// Returns the error message if the transfer failed

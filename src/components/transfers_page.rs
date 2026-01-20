@@ -49,6 +49,7 @@ impl From<&State> for Props {
 pub struct TransfersPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
+    show_shortcuts_overlay: bool,
 }
 
 impl Component for TransfersPage {
@@ -60,6 +61,7 @@ impl Component for TransfersPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
+            show_shortcuts_overlay: false,
         }
         .move_with_state(state)
     }
@@ -74,12 +76,24 @@ impl Component for TransfersPage {
                 table_state: self.props.table_state,
                 ..new_props
             },
+            show_shortcuts_overlay: self.show_shortcuts_overlay,
             ..self
         }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
+            return;
+        }
+
+        // Handle shortcuts overlay
+        if self.show_shortcuts_overlay {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    self.show_shortcuts_overlay = false;
+                }
+                _ => {}
+            }
             return;
         }
 
@@ -93,6 +107,15 @@ impl Component for TransfersPage {
             KeyCode::Delete | KeyCode::Backspace => {
                 self.unselect_transfer_item();
             }
+            KeyCode::Char('c') => {
+                self.cancel_selected_transfer();
+            }
+            KeyCode::Char('p') => {
+                self.pause_selected_transfer();
+            }
+            KeyCode::Char('u') => {
+                self.resume_selected_transfer();
+            }
             KeyCode::Char('r') => {
                 let _ = self.action_tx.send(Action::RunTransfers);
             }
@@ -105,9 +128,7 @@ impl Component for TransfersPage {
                 let _ = self.action_tx.send(Action::Exit);
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate {
-                    page: ActivePage::Help,
-                });
+                self.show_shortcuts_overlay = true;
             }
             KeyCode::Esc => {
                 let _ = self.action_tx.send(Action::Navigate {
@@ -120,6 +141,70 @@ impl Component for TransfersPage {
 }
 
 impl TransfersPage {
+    fn make_shortcuts_overlay(&self) -> Table<'_> {
+        let shortcuts = vec![
+            ("↑↓ / j k", "Navigate up/down"),
+            ("r", "Run/start transfers"),
+            ("p", "Pause selected transfer"),
+            ("u", "Resume paused transfer"),
+            ("c", "Cancel selected transfer"),
+            ("Del / ⌫", "Remove from list"),
+            ("s", "Select S3 account"),
+            ("Esc", "Back to file manager"),
+            ("q", "Quit application"),
+            ("?", "Toggle this help"),
+        ];
+
+        let rows: Vec<Row> = shortcuts
+            .iter()
+            .map(|(key, desc)| {
+                Row::new(vec![
+                    Span::styled(*key, Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(*desc),
+                ])
+            })
+            .collect();
+
+        let header = Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Cyan).bold())
+            .bottom_margin(1);
+
+        Table::new(rows, [Constraint::Length(12), Constraint::Length(30)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Transfers Shortcuts ")
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw(" Press "),
+                            Span::styled("?", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" or "),
+                            Span::styled("Esc", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" to close "),
+                        ])
+                        .alignment(Alignment::Center),
+                    ),
+            )
+    }
+
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::vertical([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+        Layout::horizontal([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+    }
+
     pub fn move_up_table_selection(&mut self) {
         let i = match self.props.table_state.selected() {
             Some(i) => {
@@ -175,6 +260,56 @@ impl TransfersPage {
             }
         }
     }
+
+    /// Cancel the currently selected transfer (if it has a job_id)
+    pub fn cancel_selected_transfer(&mut self) {
+        if let Some(selected_row) = self
+            .props
+            .table_state
+            .selected()
+            .and_then(|index| self.props.selected_items.get(index))
+        {
+            if let Some(job_id) = selected_row.job_id {
+                let _ = self.action_tx.send(Action::CancelTransfer { job_id });
+            }
+        }
+    }
+
+    /// Pause the currently selected transfer (if it has a job_id and is in progress)
+    pub fn pause_selected_transfer(&mut self) {
+        if let Some(selected_row) = self
+            .props
+            .table_state
+            .selected()
+            .and_then(|index| self.props.selected_items.get(index))
+        {
+            if let Some(job_id) = selected_row.job_id {
+                // Only pause if transfer is in progress
+                if !selected_row.transfer_state.is_terminal()
+                    && !selected_row.transfer_state.is_paused()
+                {
+                    let _ = self.action_tx.send(Action::PauseTransfer { job_id });
+                }
+            }
+        }
+    }
+
+    /// Resume the currently selected transfer (if it has a job_id and is paused)
+    pub fn resume_selected_transfer(&mut self) {
+        if let Some(selected_row) = self
+            .props
+            .table_state
+            .selected()
+            .and_then(|index| self.props.selected_items.get(index))
+        {
+            if let Some(job_id) = selected_row.job_id {
+                // Only resume if transfer is paused
+                if selected_row.transfer_state.is_paused() {
+                    let _ = self.action_tx.send(Action::ResumeTransfer { job_id });
+                }
+            }
+        }
+    }
     fn find_s3_item_from_transfer_item(
         &self,
         transfer_item: &TransferItem,
@@ -214,6 +349,10 @@ impl TransfersPage {
     fn get_row(&self, item: &TransferItem) -> Row<'_> {
         if item.error().is_some() {
             Row::new(item.to_columns().clone()).fg(Color::Red)
+        } else if item.is_cancelled() {
+            Row::new(item.to_columns().clone()).fg(Color::DarkGray)
+        } else if item.is_paused() {
+            Row::new(item.to_columns().clone()).fg(Color::Yellow)
         } else if item.is_transferred() {
             Row::new(item.to_columns().clone()).fg(Color::Blue)
         } else {
@@ -237,11 +376,29 @@ impl TransfersPage {
                 .iter()
                 .filter(|i| i.transfer_state.error().is_some())
                 .count();
+        let paused = s3_items
+            .iter()
+            .filter(|i| i.transfer_state.is_paused())
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| i.transfer_state.is_paused())
+                .count();
+        let cancelled = s3_items
+            .iter()
+            .filter(|i| i.transfer_state.is_cancelled())
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| i.transfer_state.is_cancelled())
+                .count();
         let in_progress = s3_items
             .iter()
             .filter(|i| {
                 !i.is_transferred()
                     && i.transfer_state.error().is_none()
+                    && !i.transfer_state.is_paused()
+                    && !i.transfer_state.is_cancelled()
                     && i.transfer_state.progress() > 0.0
             })
             .count()
@@ -250,33 +407,46 @@ impl TransfersPage {
                 .filter(|i| {
                     !i.is_transferred()
                         && i.transfer_state.error().is_none()
+                        && !i.transfer_state.is_paused()
+                        && !i.transfer_state.is_cancelled()
                         && i.transfer_state.progress() > 0.0
                 })
                 .count();
-        let pending = total - completed - failed - in_progress;
+        let pending = total - completed - failed - in_progress - paused - cancelled;
 
-        // Calculate overall progress percentage
-        let overall_progress = if total > 0 {
-            let total_progress: f64 = s3_items.iter().map(|i| i.transfer_state.progress()).sum::<f64>()
-                + local_items.iter().map(|i| i.transfer_state.progress()).sum::<f64>();
-            total_progress / total as f64
+        // Calculate overall progress percentage (excluding cancelled)
+        let active_total = total - cancelled;
+        let overall_progress = if active_total > 0 {
+            let total_progress: f64 = s3_items
+                .iter()
+                .filter(|i| !i.transfer_state.is_cancelled())
+                .map(|i| i.transfer_state.progress())
+                .sum::<f64>()
+                + local_items
+                    .iter()
+                    .filter(|i| !i.transfer_state.is_cancelled())
+                    .map(|i| i.transfer_state.progress())
+                    .sum::<f64>();
+            total_progress / active_total as f64
         } else {
             0.0
         };
 
         // Build status with progress bar
         let progress_bar = format_progress_bar(overall_progress, 10);
-        let status = if failed > 0 {
-            format!(
-                " {} {:.0}% | ✓{} done •{} pending ▶{} active ✗{} failed",
-                progress_bar, overall_progress, completed, pending, in_progress, failed
-            )
-        } else {
-            format!(
-                " {} {:.0}% | ✓{} done •{} pending ▶{} active",
-                progress_bar, overall_progress, completed, pending, in_progress
-            )
-        };
+        let mut status = format!(
+            " {} {:.0}% | ✓{} ▶{} •{}",
+            progress_bar, overall_progress, completed, in_progress, pending
+        );
+        if paused > 0 {
+            status.push_str(&format!(" ⏸{}", paused));
+        }
+        if failed > 0 {
+            status.push_str(&format!(" ✗{}", failed));
+        }
+        if cancelled > 0 {
+            status.push_str(&format!(" ⊘{}", cancelled));
+        }
 
         Paragraph::new(status)
             .style(Style::default().fg(Color::White))
@@ -290,7 +460,7 @@ impl TransfersPage {
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
-            Paragraph::new("| Press 'r' to run the transfers ")
+            Paragraph::new("| 'r' run, 'p' pause, 'u' resume, 'c' cancel, ⌫ remove ")
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
@@ -375,6 +545,14 @@ impl ComponentRender<()> for TransfersPage {
             .split(vertical_chunks[1]);
         frame.render_widget(status_line, status_line_layout[0]);
         frame.render_widget(help_line, status_line_layout[1]);
+
+        // Show keyboard shortcuts overlay
+        if self.show_shortcuts_overlay {
+            let area = Self::centered_rect(50, 50, frame.area());
+            frame.render_widget(Clear, area);
+            let table = self.make_shortcuts_overlay();
+            frame.render_widget(table, area);
+        }
     }
 }
 
@@ -434,22 +612,26 @@ mod tests {
             "Should navigate to S3Creds"
         );
 
-        // Test '?' key for navigation to Help page
+        // Test '?' key for showing shortcuts overlay
+        assert!(!page.show_shortcuts_overlay, "Overlay should be hidden initially");
         page.handle_key_event(KeyEvent {
             code: KeyCode::Char('?'),
             kind: KeyEventKind::Press,
             modifiers: KeyModifiers::NONE,
             state: KeyEventState::NONE,
         });
-        assert_eq!(
-            rx.recv().await.unwrap(),
-            Action::Navigate {
-                page: ActivePage::Help
-            },
-            "Should navigate to Help Page"
-        );
+        assert!(page.show_shortcuts_overlay, "Overlay should be shown after pressing ?");
 
-        // Test '?' key for navigation back to FileManager page
+        // Test '?' key again to close overlay
+        page.handle_key_event(KeyEvent {
+            code: KeyCode::Char('?'),
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::NONE,
+        });
+        assert!(!page.show_shortcuts_overlay, "Overlay should be hidden after pressing ? again");
+
+        // Test Esc key for navigation back to FileManager page
         page.handle_key_event(KeyEvent {
             code: KeyCode::Esc,
             kind: KeyEventKind::Press,
@@ -498,6 +680,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -519,6 +702,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Failed("Error".into()),
+            job_id: None,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -543,6 +727,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let transfer_item = TransferItem::from_s3_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -566,6 +751,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -586,6 +772,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Completed,
+            job_id: None,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);
@@ -609,6 +796,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::Failed("Error".into()),
+            job_id: None,
         };
         let transfer_item = TransferItem::from_local_selected_item(item);
         let res = page.get_row(&transfer_item);

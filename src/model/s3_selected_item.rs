@@ -1,6 +1,7 @@
 use crate::model::has_children::{HasChildren, HasProgress};
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::transfer_state::TransferState;
+use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
 
 /// Represents an item (file/directory/bucket) on your s3 account
@@ -15,6 +16,8 @@ pub struct S3SelectedItem {
     pub s3_creds: FileCredential,
     pub children: Option<Vec<S3SelectedItem>>,
     pub transfer_state: TransferState,
+    /// Job ID assigned by TransferManager when queued
+    pub job_id: Option<JobId>,
 }
 
 impl S3SelectedItem {
@@ -33,6 +36,7 @@ impl S3SelectedItem {
             s3_creds: creds,
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
 
@@ -52,6 +56,7 @@ impl S3SelectedItem {
             s3_creds: creds,
             children: Some(children),
             transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
 
@@ -103,6 +108,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let s3_data_item = S3DataItem {
             bucket: Some("test-bucket".into()),
@@ -138,6 +144,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let item = S3SelectedItem {
             bucket: Some("test-bucket".into()),
@@ -149,6 +156,7 @@ mod tests {
             s3_creds: Default::default(),
             children: Some(vec![child.clone()]),
             transfer_state: TransferState::default(),
+            job_id: None,
         };
         let s3_data_item = S3DataItem {
             bucket: Some("test-bucket".into()),
@@ -190,6 +198,7 @@ mod tests {
             s3_creds: Default::default(),
             children: None,
             transfer_state: TransferState::default(),
+            job_id: None,
         };
 
         // Initially pending

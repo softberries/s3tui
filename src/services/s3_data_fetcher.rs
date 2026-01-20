@@ -4,9 +4,12 @@ use crate::model::s3_selected_item::S3SelectedItem;
 use crate::settings::file_credentials::FileCredential;
 use aws_sdk_s3::config::{Credentials, Region};
 use aws_smithy_runtime_api::http::Request;
+use std::collections::HashMap;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 use std::{
     convert::Infallible,
     fs,
@@ -14,7 +17,8 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::RwLock;
 
 use crate::model::download_progress_item::DownloadProgressItem;
 use crate::model::upload_progress_item::UploadProgressItem;
@@ -29,17 +33,126 @@ use bytes::Bytes;
 use color_eyre::{eyre, Report};
 use http_body::{Body, SizeHint};
 
+/// Cache key for S3 clients - combines credentials identity and region
+#[derive(Clone, Debug)]
+struct ClientCacheKey {
+    access_key_id: String,
+    region: String,
+}
+
+impl PartialEq for ClientCacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.access_key_id == other.access_key_id && self.region == other.region
+    }
+}
+
+impl Eq for ClientCacheKey {}
+
+impl Hash for ClientCacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.access_key_id.hash(state);
+        self.region.hash(state);
+    }
+}
+
+/// Pool of S3 clients for reuse across operations.
+///
+/// AWS SDK clients are designed to be reused. This pool caches clients
+/// by credentials and region to avoid recreating them for each operation.
+#[derive(Clone)]
+pub struct S3ClientPool {
+    clients: Arc<RwLock<HashMap<ClientCacheKey, Client>>>,
+}
+
+impl S3ClientPool {
+    /// Create a new empty client pool
+    pub fn new() -> Self {
+        S3ClientPool {
+            clients: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Get an existing client or create a new one for the given credentials and region
+    pub async fn get_or_create(&self, credentials: &Credentials, region: &str) -> Client {
+        let key = ClientCacheKey {
+            access_key_id: credentials.access_key_id().to_string(),
+            region: region.to_string(),
+        };
+
+        // Try to get existing client (read lock)
+        {
+            let clients = self.clients.read().await;
+            if let Some(client) = clients.get(&key) {
+                tracing::debug!(
+                    "Reusing cached S3 client for region: {}, access_key: {}...",
+                    region,
+                    &key.access_key_id[..8.min(key.access_key_id.len())]
+                );
+                return client.clone();
+            }
+        }
+
+        // Create new client (write lock)
+        let mut clients = self.clients.write().await;
+
+        // Double-check in case another task created it while we waited for write lock
+        if let Some(client) = clients.get(&key) {
+            return client.clone();
+        }
+
+        tracing::debug!(
+            "Creating new S3 client for region: {}, access_key: {}...",
+            region,
+            &key.access_key_id[..8.min(key.access_key_id.len())]
+        );
+
+        // Create new client
+        let region_provider = RegionProviderChain::first_try(Region::new(region.to_string()))
+            .or_default_provider()
+            .or_else(Region::new("eu-north-1"));
+        let shared_config = aws_config::from_env()
+            .credentials_provider(credentials.clone())
+            .region(region_provider)
+            .load()
+            .await;
+        let client = Client::new(&shared_config);
+
+        clients.insert(key, client.clone());
+        client
+    }
+
+    /// Clear all cached clients (useful when credentials are refreshed)
+    #[allow(dead_code)] // Will be used for credential refresh feature
+    pub async fn clear(&self) {
+        let mut clients = self.clients.write().await;
+        clients.clear();
+    }
+
+    /// Get the number of cached clients
+    #[allow(dead_code)] // Used in tests
+    pub async fn cached_count(&self) -> usize {
+        self.clients.read().await.len()
+    }
+}
+
+impl Default for S3ClientPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Handles interactions with the s3 services through AWS sdk
 #[derive(Clone)]
 pub struct S3DataFetcher {
     pub default_region: String,
     credentials: Credentials,
+    client_pool: S3ClientPool,
 }
 
 struct ProgressTracker {
     bytes_written: u64,
     content_length: u64,
-    progress_sender: UnboundedSender<UploadProgressItem>,
+    progress_sender: Sender<UploadProgressItem>,
     uri: String,
 }
 
@@ -51,7 +164,8 @@ impl ProgressTracker {
             progress: progress * 100.0,
             uri: self.uri.clone(),
         };
-        let _ = self.progress_sender.send(progress_item);
+        // Use try_send to avoid blocking transfers when channel is full
+        let _ = self.progress_sender.try_send(progress_item);
     }
 }
 
@@ -73,7 +187,7 @@ impl ProgressBody<SdkBody> {
     // this "change the wheels on the fly" utility.
     pub fn replace(
         value: Request<SdkBody>,
-        tx: UnboundedSender<UploadProgressItem>,
+        tx: Sender<UploadProgressItem>,
     ) -> Result<Request<SdkBody>, Infallible> {
         let uri = value.uri().to_string();
         let value = value.map(|body| {
@@ -94,7 +208,7 @@ impl<InnerBody> ProgressBody<InnerBody>
         body: InnerBody,
         content_length: u64,
         uri: String,
-        tx: UnboundedSender<UploadProgressItem>,
+        tx: Sender<UploadProgressItem>,
     ) -> Self {
         Self {
             inner: body,
@@ -171,6 +285,7 @@ impl S3DataFetcher {
         S3DataFetcher {
             default_region,
             credentials,
+            client_pool: S3ClientPool::new(),
         }
     }
 
@@ -182,7 +297,7 @@ impl S3DataFetcher {
     pub async fn upload_item(
         &self,
         item: LocalSelectedItem,
-        upload_tx: UnboundedSender<UploadProgressItem>,
+        upload_tx: Sender<UploadProgressItem>,
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let body = ByteStream::read_from()
@@ -234,7 +349,7 @@ impl S3DataFetcher {
     pub async fn download_item(
         &self,
         item: S3SelectedItem,
-        download_tx: UnboundedSender<DownloadProgressItem>,
+        download_tx: Sender<DownloadProgressItem>,
     ) -> eyre::Result<bool> {
         let client = self.get_s3_client(Some(item.s3_creds)).await;
         let mut path = PathBuf::from(item.destination_dir);
@@ -281,7 +396,8 @@ impl S3DataFetcher {
                         bucket: bucket.clone(),
                         progress,
                     };
-                    let _ = download_tx.send(download_progress_item);
+                    // Use try_send to avoid blocking downloads when channel is full
+                    let _ = download_tx.try_send(download_progress_item);
                 }
                 Ok(true)
             }
@@ -665,11 +781,12 @@ impl S3DataFetcher {
 
     async fn get_s3_client(&self, creds: Option<FileCredential>) -> Client {
         let credentials: Credentials;
-        let default_region: String;
+        let region: String;
+
         if let Some(crd) = creds {
             let access_key = crd.access_key;
             let secret_access_key = crd.secret_key;
-            default_region = crd.default_region;
+            region = crd.default_region;
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
@@ -679,16 +796,64 @@ impl S3DataFetcher {
             );
         } else {
             credentials = self.credentials.clone();
-            default_region = self.default_region.clone();
+            region = self.default_region.clone();
         }
-        let region_provider = RegionProviderChain::first_try(Region::new(default_region))
-            .or_default_provider()
-            .or_else(Region::new("eu-north-1"));
-        let shared_config = aws_config::from_env()
-            .credentials_provider(credentials)
-            .region(region_provider)
-            .load()
-            .await;
-        Client::new(&shared_config)
+
+        // Use the client pool to get or create a client
+        self.client_pool.get_or_create(&credentials, &region).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_client_pool_caches_clients() {
+        let pool = S3ClientPool::new();
+        let credentials = Credentials::new(
+            "test_access_key",
+            "test_secret_key",
+            None,
+            None,
+            "test",
+        );
+
+        // First call should create a client
+        let _client1 = pool.get_or_create(&credentials, "us-east-1").await;
+        assert_eq!(pool.cached_count().await, 1);
+
+        // Second call with same credentials and region should reuse
+        let _client2 = pool.get_or_create(&credentials, "us-east-1").await;
+        assert_eq!(pool.cached_count().await, 1);
+
+        // Different region should create new client
+        let _client3 = pool.get_or_create(&credentials, "eu-west-1").await;
+        assert_eq!(pool.cached_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_client_pool_different_credentials() {
+        let pool = S3ClientPool::new();
+        let creds1 = Credentials::new("key1", "secret1", None, None, "test");
+        let creds2 = Credentials::new("key2", "secret2", None, None, "test");
+
+        let _client1 = pool.get_or_create(&creds1, "us-east-1").await;
+        let _client2 = pool.get_or_create(&creds2, "us-east-1").await;
+
+        // Different credentials should create different clients
+        assert_eq!(pool.cached_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_client_pool_clear() {
+        let pool = S3ClientPool::new();
+        let credentials = Credentials::new("key", "secret", None, None, "test");
+
+        let _client = pool.get_or_create(&credentials, "us-east-1").await;
+        assert_eq!(pool.cached_count().await, 1);
+
+        pool.clear().await;
+        assert_eq!(pool.cached_count().await, 0);
     }
 }
