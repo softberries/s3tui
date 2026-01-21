@@ -191,6 +191,7 @@ macro_rules! trace_dbg {
 ///
 /// # Example
 /// ```
+/// use s3tui::utils::format_progress_bar;
 /// let bar = format_progress_bar(50.0, 10);
 /// // Returns: "█████░░░░░"
 /// ```

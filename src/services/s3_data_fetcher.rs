@@ -59,16 +59,23 @@ const RETRY_DELAY_MS: u64 = 1000;
 /// How often to persist download progress (in bytes)
 const DOWNLOAD_PROGRESS_PERSIST_INTERVAL: u64 = 10 * 1024 * 1024; // 10 MB
 
-/// Cache key for S3 clients - combines credentials identity and region
+/// Cache key for S3 clients - combines minio identity, region, and endpoint
 #[derive(Clone, Debug)]
 struct ClientCacheKey {
     access_key_id: String,
     region: String,
+    /// Custom endpoint URL for S3-compatible storage
+    endpoint_url: Option<String>,
+    /// Force path-style addressing (required by some S3-compatible services)
+    force_path_style: bool,
 }
 
 impl PartialEq for ClientCacheKey {
     fn eq(&self, other: &Self) -> bool {
-        self.access_key_id == other.access_key_id && self.region == other.region
+        self.access_key_id == other.access_key_id
+            && self.region == other.region
+            && self.endpoint_url == other.endpoint_url
+            && self.force_path_style == other.force_path_style
     }
 }
 
@@ -78,13 +85,15 @@ impl Hash for ClientCacheKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.access_key_id.hash(state);
         self.region.hash(state);
+        self.endpoint_url.hash(state);
+        self.force_path_style.hash(state);
     }
 }
 
 /// Pool of S3 clients for reuse across operations.
 ///
 /// AWS SDK clients are designed to be reused. This pool caches clients
-/// by credentials and region to avoid recreating them for each operation.
+/// by minio and region to avoid recreating them for each operation.
 #[derive(Clone)]
 pub struct S3ClientPool {
     clients: Arc<RwLock<HashMap<ClientCacheKey, Client>>>,
@@ -98,11 +107,25 @@ impl S3ClientPool {
         }
     }
 
-    /// Get an existing client or create a new one for the given credentials and region
-    pub async fn get_or_create(&self, credentials: &Credentials, region: &str) -> Client {
+    /// Get an existing client or create a new one for the given minio, region, and endpoint
+    ///
+    /// # Arguments
+    /// * `minio` - AWS minio
+    /// * `region` - AWS region
+    /// * `endpoint_url` - Optional custom endpoint URL for S3-compatible storage
+    /// * `force_path_style` - Enable path-style addressing (required by some S3-compatible services)
+    pub async fn get_or_create(
+        &self,
+        credentials: &Credentials,
+        region: &str,
+        endpoint_url: Option<&str>,
+        force_path_style: bool,
+    ) -> Client {
         let key = ClientCacheKey {
             access_key_id: credentials.access_key_id().to_string(),
             region: region.to_string(),
+            endpoint_url: endpoint_url.map(|s| s.to_string()),
+            force_path_style,
         };
 
         // Try to get existing client (read lock)
@@ -110,8 +133,9 @@ impl S3ClientPool {
             let clients = self.clients.read().await;
             if let Some(client) = clients.get(&key) {
                 tracing::debug!(
-                    "Reusing cached S3 client for region: {}, access_key: {}...",
+                    "Reusing cached S3 client for region: {}, endpoint: {:?}, access_key: {}...",
                     region,
+                    endpoint_url,
                     &key.access_key_id[..8.min(key.access_key_id.len())]
                 );
                 return client.clone();
@@ -127,27 +151,45 @@ impl S3ClientPool {
         }
 
         tracing::debug!(
-            "Creating new S3 client for region: {}, access_key: {}...",
+            "Creating new S3 client for region: {}, endpoint: {:?}, access_key: {}...",
             region,
+            endpoint_url,
             &key.access_key_id[..8.min(key.access_key_id.len())]
         );
 
-        // Create new client
+        // Create new client with optional custom endpoint
         let region_provider = RegionProviderChain::first_try(Region::new(region.to_string()))
             .or_default_provider()
             .or_else(Region::new("eu-north-1"));
-        let shared_config = aws_config::from_env()
-            .credentials_provider(credentials.clone())
-            .region(region_provider)
-            .load()
-            .await;
-        let client = Client::new(&shared_config);
+
+        let client = if let Some(url) = endpoint_url {
+            // S3-compatible storage with custom endpoint
+            let shared_config = aws_config::from_env()
+                .credentials_provider(credentials.clone())
+                .region(region_provider)
+                .endpoint_url(url)
+                .load()
+                .await;
+            Client::from_conf(
+                aws_sdk_s3::config::Builder::from(&shared_config)
+                    .force_path_style(force_path_style)
+                    .build(),
+            )
+        } else {
+            // Standard AWS S3
+            let shared_config = aws_config::from_env()
+                .credentials_provider(credentials.clone())
+                .region(region_provider)
+                .load()
+                .await;
+            Client::new(&shared_config)
+        };
 
         clients.insert(key, client.clone());
         client
     }
 
-    /// Clear all cached clients (useful when credentials are refreshed)
+    /// Clear all cached clients (useful when minio are refreshed)
     #[allow(dead_code)] // Will be used for credential refresh feature
     pub async fn clear(&self) {
         let mut clients = self.clients.write().await;
@@ -171,6 +213,8 @@ impl Default for S3ClientPool {
 #[derive(Clone)]
 pub struct S3DataFetcher {
     pub default_region: String,
+    pub endpoint_url: Option<String>,
+    pub force_path_style: bool,
     credentials: Credentials,
     client_pool: S3ClientPool,
     /// Optional transfer state store for resumable uploads/downloads
@@ -305,15 +349,19 @@ impl S3DataFetcher {
         let access_key = creds.access_key.clone();
         let secret_access_key = creds.secret_key.clone();
         let default_region = creds.default_region.clone();
+        let endpoint_url = creds.endpoint_url.clone();
+        let force_path_style = creds.force_path_style;
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
-            None,     // Token, if using temporary credentials (like STS)
+            None,     // Token, if using temporary minio (like STS)
             None,     // Expiry time, if applicable
             "manual", // Source, just a label for debugging
         );
         S3DataFetcher {
             default_region,
+            endpoint_url,
+            force_path_style,
             credentials,
             client_pool: S3ClientPool::new(),
             transfer_state_store: None,
@@ -995,12 +1043,16 @@ impl S3DataFetcher {
         if is_bucket {
             let location = self.get_bucket_location(&name).await?;
             let creds = self.credentials.clone();
+            let endpoint_url = self.endpoint_url.clone();
+            let force_path_style = self.force_path_style;
             let temp_file_creds = FileCredential {
                 name: "temp".to_string(),
                 access_key: creds.access_key_id().to_string(),
                 secret_key: creds.secret_access_key().to_string(),
                 default_region: location.clone(),
                 selected: false,
+                endpoint_url,
+                force_path_style,
             };
             let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
             let response = client_with_location
@@ -1040,6 +1092,8 @@ impl S3DataFetcher {
             access_key: creds.access_key_id().to_string(),
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
+            endpoint_url: self.endpoint_url.clone(),
+            force_path_style: self.force_path_style,
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -1086,6 +1140,8 @@ impl S3DataFetcher {
             access_key: creds.access_key_id().to_string(),
             secret_key: creds.secret_access_key().to_string(),
             default_region: location.clone(),
+            endpoint_url: self.endpoint_url.clone(),
+            force_path_style: self.force_path_style,
             selected: false,
         };
         let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
@@ -1198,6 +1254,8 @@ impl S3DataFetcher {
                 access_key: creds.access_key_id().to_string(),
                 secret_key: creds.secret_access_key().to_string(),
                 default_region: location.to_string(),
+                endpoint_url: self.endpoint_url.clone(),
+                force_path_style: self.force_path_style,
                 selected: false,
             };
 
@@ -1259,25 +1317,33 @@ impl S3DataFetcher {
     async fn get_s3_client(&self, creds: Option<FileCredential>) -> Client {
         let credentials: Credentials;
         let region: String;
+        let endpoint_url: Option<String>;
+        let force_path_style: bool;
 
         if let Some(crd) = creds {
             let access_key = crd.access_key;
             let secret_access_key = crd.secret_key;
             region = crd.default_region;
+            endpoint_url = crd.endpoint_url;
+            force_path_style = crd.force_path_style;
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
-                None,     // Token, if using temporary credentials (like STS)
+                None,     // Token, if using temporary minio (like STS)
                 None,     // Expiry time, if applicable
                 "manual", // Source, just a label for debugging
             );
         } else {
+            endpoint_url = self.endpoint_url.clone();
+            force_path_style = self.force_path_style;
             credentials = self.credentials.clone();
             region = self.default_region.clone();
         }
 
         // Use the client pool to get or create a client
-        self.client_pool.get_or_create(&credentials, &region).await
+        self.client_pool
+            .get_or_create(&credentials, &region, endpoint_url.as_deref(), force_path_style)
+            .await
     }
 }
 
@@ -1297,15 +1363,15 @@ mod tests {
         );
 
         // First call should create a client
-        let _client1 = pool.get_or_create(&credentials, "us-east-1").await;
+        let _client1 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
-        // Second call with same credentials and region should reuse
-        let _client2 = pool.get_or_create(&credentials, "us-east-1").await;
+        // Second call with same minio and region should reuse
+        let _client2 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
         // Different region should create new client
-        let _client3 = pool.get_or_create(&credentials, "eu-west-1").await;
+        let _client3 = pool.get_or_create(&credentials, "eu-west-1", None, false).await;
         assert_eq!(pool.cached_count().await, 2);
     }
 
@@ -1315,11 +1381,39 @@ mod tests {
         let creds1 = Credentials::new("key1", "secret1", None, None, "test");
         let creds2 = Credentials::new("key2", "secret2", None, None, "test");
 
-        let _client1 = pool.get_or_create(&creds1, "us-east-1").await;
-        let _client2 = pool.get_or_create(&creds2, "us-east-1").await;
+        let _client1 = pool.get_or_create(&creds1, "us-east-1", None, false).await;
+        let _client2 = pool.get_or_create(&creds2, "us-east-1", None, false).await;
 
-        // Different credentials should create different clients
+        // Different minio should create different clients
         assert_eq!(pool.cached_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_client_pool_different_endpoints() {
+        let pool = S3ClientPool::new();
+        let credentials = Credentials::new("key", "secret", None, None, "test");
+
+        // Standard AWS endpoint
+        let _client1 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
+        assert_eq!(pool.cached_count().await, 1);
+
+        // Same minio but with custom endpoint should create new client
+        let _client2 = pool
+            .get_or_create(&credentials, "us-east-1", Some("http://localhost:9000"), true)
+            .await;
+        assert_eq!(pool.cached_count().await, 2);
+
+        // Same endpoint should reuse
+        let _client3 = pool
+            .get_or_create(&credentials, "us-east-1", Some("http://localhost:9000"), true)
+            .await;
+        assert_eq!(pool.cached_count().await, 2);
+
+        // Different endpoint should create new client
+        let _client4 = pool
+            .get_or_create(&credentials, "us-east-1", Some("http://minio.local:9000"), true)
+            .await;
+        assert_eq!(pool.cached_count().await, 3);
     }
 
     #[tokio::test]
@@ -1327,7 +1421,7 @@ mod tests {
         let pool = S3ClientPool::new();
         let credentials = Credentials::new("key", "secret", None, None, "test");
 
-        let _client = pool.get_or_create(&credentials, "us-east-1").await;
+        let _client = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
         pool.clear().await;

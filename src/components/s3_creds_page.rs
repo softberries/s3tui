@@ -303,6 +303,8 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
+            endpoint_url: None,
+            force_path_style: false,
             selected: true,
         };
         let state = State::new(vec![creds]);
@@ -319,6 +321,8 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
+            endpoint_url: None,
+            force_path_style: false,
             selected: true,
         };
         let state = State::new(vec![creds.clone()]);
@@ -366,6 +370,8 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
+            endpoint_url: None,
+            force_path_style: false,
             selected: true,
         };
         let state = State::new(vec![creds.clone()]);
@@ -383,6 +389,8 @@ mod tests {
             access_key: "accessKey".to_string(),
             secret_key: "secretKey".to_string(),
             default_region: "eu-north-1".to_string(),
+            endpoint_url: None,
+            force_path_style: false,
             selected: false,
         };
         let state = State::new(vec![creds.clone()]);
