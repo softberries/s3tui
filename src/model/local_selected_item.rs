@@ -1,21 +1,25 @@
+use crate::model::has_children::{HasChildren, HasProgress};
 use crate::model::local_data_item::LocalDataItem;
+use crate::model::transfer_state::TransferState;
+use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Keeps the information about the selected file which is later displayed on the transfers page
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalSelectedItem {
     pub name: String,
     pub path: String,
     pub is_directory: bool,
     pub destination_bucket: String,
     pub destination_path: String,
-    pub transferred: bool,
     pub s3_creds: FileCredential,
-    pub progress: f64,
     pub children: Option<Vec<LocalSelectedItem>>,
-    pub error: Option<String>,
+    pub transfer_state: TransferState,
+    /// Job ID assigned by TransferManager when queued
+    pub job_id: Option<JobId>,
 }
 
 impl LocalSelectedItem {
@@ -34,33 +38,12 @@ impl LocalSelectedItem {
             is_directory,
             destination_bucket,
             destination_path,
-            transferred: false,
             s3_creds,
-            progress: 0f64,
             children,
-            error: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
-    /*
-    let selected_item = LocalSelectedItem::new(
-                    sr.name.clone(),
-                    sr.path,
-                    sr.is_directory,
-                    selected_bucket,
-                    destination_path,
-                    self.props.current_s3_creds.clone(),
-                    None,
-                );
-    let selected_item = LocalSelectedItem::new(
-                sr.name,
-                sr.path,
-                sr.is_directory,
-                "".to_string(),
-                self.props.current_s3_path.clone(),
-                self.props.current_s3_creds.clone(),
-                None,
-            );
-     */
 
     pub fn from_local_data_item(item: LocalDataItem, s3_creds: FileCredential) -> Self {
         LocalSelectedItem {
@@ -69,11 +52,10 @@ impl LocalSelectedItem {
             is_directory: item.is_directory,
             destination_bucket: String::new(),
             destination_path: String::new(),
-            transferred: false,
             s3_creds,
-            progress: 0f64,
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
         }
     }
 
@@ -96,11 +78,10 @@ impl LocalSelectedItem {
                                 .join(path.file_name().unwrap().to_string_lossy().into_owned())
                                 .to_string_lossy()
                                 .into(),
-                            transferred: false,
                             s3_creds: item.s3_creds.clone(),
-                            progress: 0.0,
                             children: None,
-                            error: None,
+                            transfer_state: TransferState::default(),
+                            job_id: None,
                         }));
                     } else {
                         // Process files
@@ -113,11 +94,10 @@ impl LocalSelectedItem {
                                 .join(path.file_name().unwrap().to_string_lossy().into_owned())
                                 .to_string_lossy()
                                 .into(),
-                            transferred: false,
                             s3_creds: item.s3_creds.clone(),
-                            progress: 0.0,
                             children: None,
-                            error: None,
+                            transfer_state: TransferState::default(),
+                            job_id: None,
                         });
                     }
                 }
@@ -127,6 +107,11 @@ impl LocalSelectedItem {
             vec![item.clone()]
         }
     }
+
+    /// Returns true if the transfer has completed successfully
+    pub fn is_transferred(&self) -> bool {
+        self.transfer_state.is_completed()
+    }
 }
 
 impl PartialEq for LocalSelectedItem {
@@ -134,6 +119,22 @@ impl PartialEq for LocalSelectedItem {
         self.name == other.name
             && self.path == other.path
             && self.is_directory == other.is_directory
+    }
+}
+
+impl HasChildren for LocalSelectedItem {
+    fn children(&self) -> Option<&Vec<Self>> {
+        self.children.as_ref()
+    }
+
+    fn take_children(self) -> Vec<Self> {
+        self.children.unwrap_or_default()
+    }
+}
+
+impl HasProgress for LocalSelectedItem {
+    fn progress(&self) -> f64 {
+        self.transfer_state.progress()
     }
 }
 
@@ -146,14 +147,13 @@ mod tests {
         let item = LocalSelectedItem {
             destination_bucket: "test-bucket".into(),
             destination_path: "".to_string(),
-            transferred: false,
             name: "file1.txt".into(),
             path: "path/to/file1.txt".into(),
-            progress: 0.0,
             is_directory: false,
             s3_creds: Default::default(),
             children: None,
-            error: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
         };
         let res = LocalSelectedItem::new(
             "file1.txt".into(),
@@ -165,5 +165,40 @@ mod tests {
             None,
         );
         assert_eq!(item, res);
+    }
+
+    #[test]
+    fn test_transfer_state_helpers() {
+        let mut item = LocalSelectedItem {
+            name: "file1.txt".into(),
+            path: "/home/user/file1.txt".into(),
+            is_directory: false,
+            destination_bucket: "test-bucket".into(),
+            destination_path: "uploads/file1.txt".into(),
+            s3_creds: Default::default(),
+            children: None,
+            transfer_state: TransferState::default(),
+            job_id: None,
+        };
+
+        // Initially pending
+        assert!(!item.is_transferred());
+        assert_eq!(item.transfer_state.progress(), 0.0);
+        assert!(item.transfer_state.error().is_none());
+
+        // Set in progress
+        item.transfer_state = TransferState::InProgress(50.0);
+        assert!(!item.is_transferred());
+        assert_eq!(item.transfer_state.progress(), 50.0);
+
+        // Complete
+        item.transfer_state = TransferState::Completed;
+        assert!(item.is_transferred());
+        assert_eq!(item.transfer_state.progress(), 100.0);
+
+        // Failed
+        item.transfer_state = TransferState::Failed("Upload error".into());
+        assert!(!item.is_transferred());
+        assert_eq!(item.transfer_state.error(), Some("Upload error"));
     }
 }

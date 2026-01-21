@@ -1,7 +1,9 @@
 //! This module provides list of all possible actions which can be executed on the UI
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::sorting::SortColumn;
 use crate::model::state::ActivePage;
+use crate::services::transfer_manager::JobId;
 use crate::settings::file_credentials::FileCredential;
 
 /// List of all possible actions a user can execute
@@ -47,5 +49,30 @@ pub enum Action {
     },
     ClearDeletionErrors,
     RunTransfers,
+    SortS3 {
+        column: SortColumn,
+    },
+    SortLocal {
+        column: SortColumn,
+    },
+    SetSearchMode {
+        active: bool,
+    },
+    SetSearchQuery {
+        query: String,
+    },
+    ClearSearch,
+    /// Pause a transfer by job ID
+    PauseTransfer {
+        job_id: JobId,
+    },
+    /// Resume a paused transfer by job ID
+    ResumeTransfer {
+        job_id: JobId,
+    },
+    /// Cancel a transfer by job ID
+    CancelTransfer {
+        job_id: JobId,
+    },
     Exit,
 }

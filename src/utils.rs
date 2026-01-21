@@ -2,6 +2,7 @@ use color_eyre::eyre;
 use crossterm::cursor;
 use crossterm::event::{DisableBracketedPaste, DisableMouseCapture};
 use crossterm::terminal::LeaveAlternateScreen;
+use std::io::LineWriter;
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
@@ -132,6 +133,9 @@ pub fn initialize_logging() -> eyre::Result<()> {
     std::fs::create_dir_all(directory.clone())?;
     let log_path = directory.join(LOG_FILE.clone());
     let log_file = std::fs::File::create(log_path)?;
+    // Wrap in LineWriter to ensure logs are flushed after each line,
+    // then in Mutex for thread-safe access required by tracing-subscriber
+    let log_file = std::sync::Mutex::new(LineWriter::new(log_file));
     std::env::set_var(
         "RUST_LOG",
         std::env::var("RUST_LOG")
@@ -179,6 +183,54 @@ macro_rules! trace_dbg {
     };
 }
 
+/// Creates a visual progress bar using Unicode block characters
+///
+/// # Arguments
+/// * `progress` - Progress percentage (0.0 to 100.0)
+/// * `width` - Width of the progress bar in characters
+///
+/// # Example
+/// ```
+/// let bar = format_progress_bar(50.0, 10);
+/// // Returns: "█████░░░░░"
+/// ```
+pub fn format_progress_bar(progress: f64, width: usize) -> String {
+    let progress = progress.clamp(0.0, 100.0);
+    let filled = ((progress / 100.0) * width as f64).round() as usize;
+    let empty = width.saturating_sub(filled);
+    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
+}
+
+/// Calculates transfer speed given bytes transferred and duration
+///
+/// # Arguments
+/// * `bytes` - Bytes transferred
+/// * `duration_secs` - Duration in seconds (as f64 for sub-second precision)
+///
+/// # Returns
+/// Speed in bytes per second
+pub fn calculate_transfer_speed(bytes: u64, duration_secs: f64) -> f64 {
+    if duration_secs <= 0.0 {
+        return 0.0;
+    }
+    bytes as f64 / duration_secs
+}
+
+/// Calculates estimated time remaining
+///
+/// # Arguments
+/// * `remaining_bytes` - Bytes left to transfer
+/// * `speed` - Current speed in bytes per second
+///
+/// # Returns
+/// ETA in seconds, or None if speed is zero
+pub fn calculate_eta(remaining_bytes: u64, speed: f64) -> Option<u64> {
+    if speed <= 0.0 {
+        return None;
+    }
+    Some((remaining_bytes as f64 / speed).ceil() as u64)
+}
+
 pub fn version() -> String {
     let author = clap::crate_authors!();
 
@@ -195,4 +247,49 @@ Authors: {author}
 Config directory: {config_dir_path}
 Data directory: {data_dir_path}"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_progress_bar_empty() {
+        assert_eq!(format_progress_bar(0.0, 10), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn test_format_progress_bar_half() {
+        assert_eq!(format_progress_bar(50.0, 10), "█████░░░░░");
+    }
+
+    #[test]
+    fn test_format_progress_bar_full() {
+        assert_eq!(format_progress_bar(100.0, 10), "██████████");
+    }
+
+    #[test]
+    fn test_format_progress_bar_clamps_over_100() {
+        assert_eq!(format_progress_bar(150.0, 10), "██████████");
+    }
+
+    #[test]
+    fn test_format_progress_bar_clamps_negative() {
+        assert_eq!(format_progress_bar(-10.0, 10), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn test_calculate_transfer_speed() {
+        assert_eq!(calculate_transfer_speed(1000, 1.0), 1000.0);
+        assert_eq!(calculate_transfer_speed(1000, 2.0), 500.0);
+        assert_eq!(calculate_transfer_speed(1000, 0.0), 0.0);
+        assert_eq!(calculate_transfer_speed(1000, -1.0), 0.0);
+    }
+
+    #[test]
+    fn test_calculate_eta() {
+        assert_eq!(calculate_eta(1000, 100.0), Some(10));
+        assert_eq!(calculate_eta(1000, 0.0), None);
+        assert_eq!(calculate_eta(0, 100.0), Some(0));
+    }
 }

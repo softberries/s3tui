@@ -1,11 +1,12 @@
 use crate::utils::get_data_dir;
 use color_eyre::{eyre, Report};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::Path;
 
 /// Representation of the credentials stored in your configuration
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FileCredential {
     pub name: String,
     pub access_key: String,

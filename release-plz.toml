@@ -1,0 +1,56 @@
+[workspace]
+# Create GitHub releases when publishing
+git_release_enable = true
+
+# Create git tags
+git_tag_enable = true
+
+# Update changelog
+changelog_update = true
+
+# Run semver checks (detect breaking changes)
+semver_check = true
+
+# PR configuration
+pr_labels = ["release"]
+pr_branch_prefix = "release-plz-"
+
+# Publish timeout
+publish_timeout = "10m"
+
+# enable version bumpting
+release_commits = "^(feat|fix|refactor|perf|docs)"
+
+[changelog]
+# Protect breaking change commits from being hidden
+protect_breaking_commits = true
+
+# Sort commits newest first
+sort_commits = "newest"
+
+# Changelog body template
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first | trim }}\
+{% if commit.scope %} *({{ commit.scope }})*{% endif %}\
+{% if commit.breaking %} **BREAKING**{% endif %}\
+ ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/softberries/s3tui/commit/{{ commit.id }}))
+{% endfor %}
+{% endfor %}
+"""
+
+# Commit parsers for grouping
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^style", group = "Styling" },
+    { message = "^test", group = "Testing" },
+    { message = "^chore", group = "Miscellaneous" },
+    { message = "^ISSUE", group = "Issues" },
+    { body = ".*", group = "Other" },
+]

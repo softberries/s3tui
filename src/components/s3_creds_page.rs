@@ -1,4 +1,5 @@
 use crate::components::component::{Component, ComponentRender};
+use crate::components::widgets::QuitConfirmation;
 use crate::model::action::Action;
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
@@ -28,6 +29,8 @@ impl From<&State> for Props {
 pub struct S3CredsPage {
     pub action_tx: UnboundedSender<Action>,
     props: Props,
+    show_shortcuts_overlay: bool,
+    show_quit_confirmation: bool,
 }
 
 impl Component for S3CredsPage {
@@ -39,6 +42,8 @@ impl Component for S3CredsPage {
             action_tx: action_tx.clone(),
             // set the props
             props: Props::from(state),
+            show_shortcuts_overlay: false,
+            show_quit_confirmation: false,
         }
         .move_with_state(state)
     }
@@ -53,29 +58,49 @@ impl Component for S3CredsPage {
                 creds_table_state: self.props.creds_table_state.clone(),
                 ..new_props
             },
+            show_shortcuts_overlay: self.show_shortcuts_overlay,
+            show_quit_confirmation: self.show_quit_confirmation,
             ..self
         }
-    }
-
-    fn name(&self) -> &str {
-        "S3CredsPage"
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
         }
+
+        // Handle quit confirmation
+        if self.show_quit_confirmation {
+            if let Some(confirmed) = QuitConfirmation::handle_key_event(key) {
+                if confirmed {
+                    let _ = self.action_tx.send(Action::Exit);
+                } else {
+                    self.show_quit_confirmation = false;
+                }
+            }
+            return;
+        }
+
+        // Handle shortcuts overlay
+        if self.show_shortcuts_overlay {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    self.show_shortcuts_overlay = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => self.move_down_creds_table_selection(),
             KeyCode::Char('k') | KeyCode::Up => self.move_up_creds_table_selection(),
             KeyCode::Enter => self.set_current_s3_account(),
             KeyCode::Char('q') => {
-                let _ = self.action_tx.send(Action::Exit);
+                self.show_quit_confirmation = true;
             }
             KeyCode::Char('?') => {
-                let _ = self.action_tx.send(Action::Navigate {
-                    page: ActivePage::Help,
-                });
+                self.show_shortcuts_overlay = true;
             }
             KeyCode::Esc => {
                 let _ = self.action_tx.send(Action::Navigate {
@@ -88,7 +113,66 @@ impl Component for S3CredsPage {
 }
 
 impl S3CredsPage {
-    fn get_s3_row(&self, item: &FileCredential) -> Row {
+    fn make_shortcuts_overlay(&self) -> Table<'_> {
+        let shortcuts = [
+            ("↑↓ / j k", "Navigate up/down"),
+            ("Enter", "Select account"),
+            ("Esc", "Back to file manager"),
+            ("q", "Quit application"),
+            ("?", "Toggle this help"),
+        ];
+
+        let rows: Vec<Row> = shortcuts
+            .iter()
+            .map(|(key, desc)| {
+                Row::new(vec![
+                    Span::styled(*key, Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(*desc),
+                ])
+            })
+            .collect();
+
+        let header = Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Cyan).bold())
+            .bottom_margin(1);
+
+        Table::new(rows, [Constraint::Length(12), Constraint::Length(30)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Account Selection Shortcuts ")
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw(" Press "),
+                            Span::styled("?", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" or "),
+                            Span::styled("Esc", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" to close "),
+                        ])
+                        .alignment(Alignment::Center),
+                    ),
+            )
+    }
+
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::vertical([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+        Layout::horizontal([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+    }
+
+    fn get_s3_row(&self, item: &FileCredential) -> Row<'_> {
         if item.selected {
             Row::new(vec![format!("{} (*)", item.name)])
         } else {
@@ -96,7 +180,7 @@ impl S3CredsPage {
         }
     }
 
-    fn get_s3_table(&self) -> Table {
+    fn get_s3_table(&self) -> Table<'_> {
         let focus_color = Color::Rgb(98, 114, 164);
         let header = Row::new(vec!["Account Name"])
             .bold()
@@ -118,7 +202,7 @@ impl S3CredsPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(Block::default().borders(Borders::ALL).title("Account list"))
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .add_modifier(Modifier::REVERSED),
@@ -187,9 +271,21 @@ impl ComponentRender<()> for S3CredsPage {
         let s3_table = self.get_s3_table();
         frame.render_stateful_widget(
             &s3_table,
-            frame.size(),
+            frame.area(),
             &mut self.props.clone().creds_table_state,
-        )
+        );
+
+        // Show quit confirmation overlay
+        if self.show_quit_confirmation {
+            QuitConfirmation::render(frame);
+        }
+        // Show keyboard shortcuts overlay
+        else if self.show_shortcuts_overlay {
+            let area = Self::centered_rect(50, 40, frame.area());
+            frame.render_widget(Clear, area);
+            let table = self.make_shortcuts_overlay();
+            frame.render_widget(table, area);
+        }
     }
 }
 
@@ -213,8 +309,8 @@ mod tests {
         };
         let state = State::new(vec![creds]);
 
-        let component = S3CredsPage::new(&state, tx);
-        assert_eq!(component.name(), "S3CredsPage");
+        let _component = S3CredsPage::new(&state, tx);
+        //test passes on no-panic
     }
 
     #[tokio::test]
@@ -232,18 +328,29 @@ mod tests {
         let state = State::new(vec![creds.clone()]);
         let mut component = S3CredsPage::new(&state, tx);
 
-        // Simulate pressing 'q'
+        // Simulate pressing 'q' shows quit confirmation
+        assert!(!component.show_quit_confirmation, "Quit confirmation should be hidden initially");
         component.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()));
+        assert!(component.show_quit_confirmation, "Quit confirmation should be shown after pressing q");
+
+        // Simulate pressing Enter to confirm quit
+        component.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
         assert_eq!(rx.recv().await.unwrap(), Action::Exit);
 
-        // Simulate pressing '?'
+        // Reset for next test
+        component.show_quit_confirmation = true;
+        // Simulate pressing Esc to cancel quit
+        component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+        assert!(!component.show_quit_confirmation, "Quit confirmation should be hidden after pressing Esc");
+
+        // Simulate pressing '?' to show overlay
+        assert!(!component.show_shortcuts_overlay, "Overlay should be hidden initially");
         component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
-        assert_eq!(
-            rx.recv().await.unwrap(),
-            Action::Navigate {
-                page: ActivePage::Help
-            }
-        );
+        assert!(component.show_shortcuts_overlay, "Overlay should be shown after pressing ?");
+
+        // Simulate pressing '?' again to close overlay
+        component.handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::empty()));
+        assert!(!component.show_shortcuts_overlay, "Overlay should be hidden after pressing ? again");
 
         // Simulate pressing 'Esc'
         component.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));

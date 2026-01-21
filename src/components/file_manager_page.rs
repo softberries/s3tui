@@ -1,14 +1,18 @@
 use crate::components::component::{Component, ComponentRender};
+use crate::components::widgets::QuitConfirmation;
 use crate::model::action::Action;
+use crate::model::error::{LocalError, S3Error};
+use crate::model::filtering::filter_items;
+use crate::model::has_children::flatten_items;
 use crate::model::local_data_item::LocalDataItem;
 use crate::model::local_selected_item::LocalSelectedItem;
 use crate::model::navigation_state::NavigationState;
 use crate::model::s3_data_item::S3DataItem;
 use crate::model::s3_selected_item::S3SelectedItem;
+use crate::model::sorting::{SortColumn, SortState};
 use crate::model::state::{ActivePage, State};
 use crate::settings::file_credentials::FileCredential;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::block::Title;
 use ratatui::{prelude::*, widgets::*};
 use throbber_widgets_tui::Throbber;
 use tokio::sync::mpsc::UnboundedSender;
@@ -33,9 +37,13 @@ struct Props {
     current_s3_bucket: Option<String>,
     current_s3_path: String,
     current_s3_creds: FileCredential,
-    s3_delete_state: Option<String>,
-    local_delete_state: Option<String>,
-    create_bucket_state: Option<String>,
+    s3_delete_error: Option<S3Error>,
+    local_delete_error: Option<LocalError>,
+    create_bucket_error: Option<S3Error>,
+    s3_sort_state: SortState,
+    local_sort_state: SortState,
+    search_query: String,
+    search_mode: bool,
 }
 
 impl From<&State> for Props {
@@ -56,9 +64,13 @@ impl From<&State> for Props {
             current_s3_bucket: st.current_s3_bucket,
             current_s3_path: st.current_s3_path.unwrap_or("/".to_string()),
             current_s3_creds: st.current_creds,
-            s3_delete_state: st.s3_delete_state,
-            local_delete_state: st.local_delete_state,
-            create_bucket_state: st.create_bucket_state,
+            s3_delete_error: st.s3_delete_error,
+            local_delete_error: st.local_delete_error,
+            create_bucket_error: st.create_bucket_error,
+            s3_sort_state: st.s3_sort_state,
+            local_sort_state: st.local_sort_state,
+            search_query: st.search_query,
+            search_mode: st.search_mode,
         }
     }
 }
@@ -78,12 +90,15 @@ pub struct FileManagerPage {
     show_delete_multiple_confirmation: bool,
     show_download_confirmation: bool,
     show_delete_error: bool,
+    show_quit_confirmation: bool,
+    show_shortcuts_overlay: bool,
     default_navigation_state: NavigationState,
     input: Input,
+    search_input: Input,
 }
 
 impl FileManagerPage {
-    fn make_transfer_error_popup(&self) -> Paragraph {
+    fn make_transfer_error_popup(&self) -> Paragraph<'_> {
         // Define the text for the paragraph
         let text = "   To move data into s3 you need to select at least a bucket to which you want to transfer your files";
         // Create the paragraph widget
@@ -94,69 +109,53 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Problem detected! |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Problem detected! |",
+                    )])),
             )
             .fg(Color::Red)
     }
 
-    fn make_delete_alert(&self, text: String, text_color: Color) -> Paragraph {
+    fn make_delete_alert(&self, text: String, text_color: Color) -> Paragraph<'_> {
         let input = Paragraph::new(text)
             .style(Style::default().fg(text_color))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("ok", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(block::Position::Bottom),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("ok", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left)),
             );
         input
     }
@@ -166,53 +165,42 @@ impl FileManagerPage {
         text: String,
         text_color: Color,
         show_buttons: bool,
-    ) -> Paragraph {
-        let ok_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("ok", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Enter",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Right)
-            .position(block::Position::Bottom);
-        let cancel_button = ratatui::widgets::block::Title::from(Line::from(vec![
-            Span::raw("|"),
-            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-            Span::raw("("),
-            Span::styled(
-                "Esc",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-            ),
-            Span::raw(")"),
-            Span::raw("|"),
-        ]))
-            .alignment(Alignment::Left)
-            .position(block::Position::Bottom);
-        let input = Paragraph::new(text)
+    ) -> Paragraph<'_> {
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default());
+
+        if show_buttons {
+            block = block
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("ok", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Enter",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Right))
+                .title_bottom(Line::from(vec![
+                    Span::raw("|"),
+                    Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                    Span::raw("("),
+                    Span::styled(
+                        "Esc",
+                        Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                    ),
+                    Span::raw(")"),
+                    Span::raw("|"),
+                ]).alignment(Alignment::Left));
+        }
+
+        Paragraph::new(text)
             .style(Style::default().fg(text_color))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default())
-                    .title(if show_buttons {
-                        ok_button
-                    } else {
-                        Title::default()
-                    })
-                    .title(if show_buttons {
-                        cancel_button
-                    } else {
-                        Title::default()
-                    }),
-            );
-        input
+            .block(block)
     }
-    fn make_bucket_name_input(&self) -> Paragraph {
+    fn make_bucket_name_input(&self) -> Paragraph<'_> {
         let scroll = self.input.visual_scroll(INPUT_SIZE);
         let input = Paragraph::new(self.input.value())
             .style(Style::default().fg(Color::Green))
@@ -221,64 +209,157 @@ impl FileManagerPage {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default())
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("save", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Enter",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Right)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![
-                            Span::raw("|"),
-                            Span::styled("cancel", Style::default().fg(Color::Yellow)),
-                            Span::raw("("),
-                            Span::styled(
-                                "Esc",
-                                Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
-                            ),
-                            Span::raw(")"),
-                            Span::raw("|"),
-                        ]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Bottom),
-                    )
-                    .title(
-                        ratatui::widgets::block::Title::from(Line::from(vec![Span::raw(
-                            "| Enter new bucket name |",
-                        )]))
-                            .alignment(Alignment::Left)
-                            .position(ratatui::widgets::block::Position::Top),
-                    ),
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("save", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left))
+                    .title_top(Line::from(vec![Span::raw(
+                        "| Enter new bucket name |",
+                    )])),
             );
         input
     }
 
-    fn get_loading_info(&self) -> Throbber {
+    fn make_shortcuts_overlay(&self) -> Table<'_> {
+        let shortcuts = vec![
+            ("Tab / ← →", "Switch between panels"),
+            ("↑↓ / j k", "Navigate up/down"),
+            ("Enter", "Open directory/bucket"),
+            ("Esc", "Go back / Clear filter"),
+            ("t", "Select for transfer"),
+            ("r", "Run transfers"),
+            ("l", "Show transfers list"),
+            ("s", "Select S3 account"),
+            ("c", "Create bucket"),
+            ("Del / ⌫", "Delete item"),
+            ("/", "Search/filter files"),
+            ("F1", "Sort by name"),
+            ("F2", "Sort by size"),
+            ("F3", "Sort by type"),
+            ("F5", "Refresh view"),
+            ("q", "Quit application"),
+            ("?", "Toggle this help"),
+        ];
+
+        let rows: Vec<Row> = shortcuts
+            .iter()
+            .map(|(key, desc)| {
+                Row::new(vec![
+                    Span::styled(*key, Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(*desc),
+                ])
+            })
+            .collect();
+
+        let header = Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Cyan).bold())
+            .bottom_margin(1);
+
+        Table::new(rows, [Constraint::Length(12), Constraint::Length(30)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Keyboard Shortcuts ")
+                    .title_bottom(
+                        Line::from(vec![
+                            Span::raw(" Press "),
+                            Span::styled("?", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" or "),
+                            Span::styled("Esc", Style::default().fg(Color::Yellow).bold()),
+                            Span::raw(" to close "),
+                        ])
+                        .alignment(Alignment::Center),
+                    ),
+            )
+    }
+
+    fn make_search_input(&self) -> Paragraph<'_> {
+        let scroll = self.search_input.visual_scroll(INPUT_SIZE);
+        Paragraph::new(self.search_input.value())
+            .style(Style::default().fg(Color::Yellow))
+            .scroll((0, scroll as u16))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .title_top(Line::from(vec![
+                        Span::raw("| "),
+                        Span::styled("Search", Style::default().fg(Color::Yellow).bold()),
+                        Span::raw(" |"),
+                    ]))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("filter", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Enter",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Green),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Right))
+                    .title_bottom(Line::from(vec![
+                        Span::raw("|"),
+                        Span::styled("cancel", Style::default().fg(Color::Yellow)),
+                        Span::raw("("),
+                        Span::styled(
+                            "Esc",
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Red),
+                        ),
+                        Span::raw(")"),
+                        Span::raw("|"),
+                    ]).alignment(Alignment::Left)),
+            )
+    }
+
+    fn get_loading_info(&self) -> Throbber<'_> {
         Throbber::default()
             .label("Loading s3 data...")
             .style(Style::default())
             .throbber_style(Style::default().add_modifier(Modifier::BOLD))
     }
 
-    fn get_local_table(&self, focus_color: Color) -> Table {
-        let header = Row::new(vec!["Name", "Size", "Type"])
-            .fg(focus_color)
-            .bold()
-            .underlined()
-            .height(1)
-            .bottom_margin(0);
-        let rows = self
-            .props
-            .local_data
+    fn get_local_table(&self, focus_color: Color) -> Table<'_> {
+        let sort_state = &self.props.local_sort_state;
+        let header = Row::new(vec![
+            format!("Name{}", sort_state.indicator(SortColumn::Name)),
+            format!("Size{}", sort_state.indicator(SortColumn::Size)),
+            format!("Type{}", sort_state.indicator(SortColumn::Type)),
+        ])
+        .fg(focus_color)
+        .bold()
+        .underlined()
+        .height(1)
+        .bottom_margin(0);
+
+        // Filter items based on search query - only if local panel is selected
+        let search_query = if !self.s3_panel_selected {
+            &self.props.search_query
+        } else {
+            &String::new()
+        };
+        let filtered_items = filter_items(&self.props.local_data, search_query);
+        let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_local_row(self, item, focus_color));
         let widths = [
@@ -290,7 +371,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()
@@ -304,55 +385,54 @@ impl FileManagerPage {
         table
     }
 
-    fn flatten_s3_items(&self, s3_selected_items: Vec<S3SelectedItem>) -> Vec<S3SelectedItem> {
-        let nested: Vec<Vec<S3SelectedItem>> = s3_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<S3SelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<S3SelectedItem> = s3_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
-
-    fn flatten_local_items(
-        &self,
-        local_selected_items: Vec<LocalSelectedItem>,
-    ) -> Vec<LocalSelectedItem> {
-        let nested: Vec<Vec<LocalSelectedItem>> = local_selected_items
-            .iter()
-            .map(|i| i.clone().children.unwrap_or_default())
-            .collect();
-        let mut children: Vec<LocalSelectedItem> = nested.into_iter().flatten().collect();
-        let single_files: Vec<LocalSelectedItem> = local_selected_items
-            .into_iter()
-            .filter(|i| i.children.is_none())
-            .collect();
-        children.extend(single_files);
-        children
-    }
-
-    fn get_status_line(&self) -> Paragraph {
-        let s3_items = self.flatten_s3_items(self.props.s3_selected_items.clone());
-        let local_items = self.flatten_local_items(self.props.local_selected_items.clone());
+    fn get_status_line(&self) -> Paragraph<'_> {
+        let s3_items = flatten_items(self.props.s3_selected_items.clone());
+        let local_items = flatten_items(self.props.local_selected_items.clone());
         let to_transfer = s3_items.len() + local_items.len();
-        let transferred = s3_items.iter().filter(|i| i.transferred).count()
-            + local_items.iter().filter(|i| i.transferred).count();
+        let transferred = s3_items.iter().filter(|i| i.is_transferred()).count()
+            + local_items.iter().filter(|i| i.is_transferred()).count();
+
+        // Count failed transfers
+        let failed = s3_items
+            .iter()
+            .filter(|i| i.transfer_state.error().is_some())
+            .count()
+            + local_items
+                .iter()
+                .filter(|i| i.transfer_state.error().is_some())
+                .count();
+
+        // Build transfer info with error count if any
+        let transfer_info = if failed > 0 {
+            format!(
+                "Transfers: {} (✓{} done ✗{} failed)",
+                to_transfer, transferred, failed
+            )
+        } else if transferred > 0 {
+            format!("Transfers: {}/{} done", transferred, to_transfer)
+        } else {
+            format!("Transfers: {}", to_transfer)
+        };
+
+        // Build filter indicator
+        let filter_info = if !self.props.search_query.is_empty() {
+            format!(" • Filter: \"{}\"", self.props.search_query)
+        } else {
+            String::new()
+        };
+
         if let Some(bucket) = &self.props.current_s3_bucket {
             let bottom_text = Paragraph::new(format!(
-                " Account: {} • Bucket: {} • Transfers: {}/{}",
-                self.props.current_s3_creds.name, bucket, to_transfer, transferred
+                " Account: {} • Bucket: {} • {}{}",
+                self.props.current_s3_creds.name, bucket, transfer_info, filter_info
             ))
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue);
             bottom_text
         } else {
             let bottom_text = Paragraph::new(format!(
-                " Account: {} • Transfers: {}/{}",
-                self.props.current_s3_creds.name, to_transfer, transferred
+                " Account: {} • {}{}",
+                self.props.current_s3_creds.name, transfer_info, filter_info
             ))
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue);
@@ -360,23 +440,23 @@ impl FileManagerPage {
         }
     }
 
-    fn get_help_line(&self) -> Paragraph {
+    fn get_help_line(&self) -> Paragraph<'_> {
         if self.props.s3_selected_items.is_empty() && self.props.local_selected_items.is_empty() {
             Paragraph::new(
-                "| 't' transfer select, 's' s3 account, 'l' transfers list, 'Esc/Enter' browsing",
+                "| '?' help, 'l' transfers list, 'Esc/Enter' browsing",
             )
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
         } else {
-            Paragraph::new("| Press 'l' to see the transfers list,'s' to select s3 account ")
+            Paragraph::new("| '?' help, 'l' transfers list, 's' select s3 account")
                 .style(Style::default().fg(Color::White))
                 .bg(Color::Blue)
                 .alignment(Alignment::Right)
         }
     }
 
-    fn get_s3_row(&self, item: &S3DataItem, focus_color: Color) -> Row {
+    fn get_s3_row(&self, item: &S3DataItem, focus_color: Color) -> Row<'_> {
         if self.contains_s3_item(
             item,
             &self.props.s3_selected_items,
@@ -390,7 +470,7 @@ impl FileManagerPage {
         }
     }
 
-    fn get_local_row(&self, item: &LocalDataItem, focus_color: Color) -> Row {
+    fn get_local_row(&self, item: &LocalDataItem, focus_color: Color) -> Row<'_> {
         if self.contains_local_item(
             item,
             &self.props.local_selected_items,
@@ -430,16 +510,27 @@ impl FileManagerPage {
         selected_items.contains(&search_item) // Search for the item in the list
     }
 
-    fn get_s3_table(&self, focus_color: Color) -> Table {
-        let header = Row::new(vec!["Name", "Size", "Type"])
-            .fg(focus_color)
-            .bold()
-            .underlined()
-            .height(1)
-            .bottom_margin(0);
-        let rows = self
-            .props
-            .s3_data
+    fn get_s3_table(&self, focus_color: Color) -> Table<'_> {
+        let sort_state = &self.props.s3_sort_state;
+        let header = Row::new(vec![
+            format!("Name{}", sort_state.indicator(SortColumn::Name)),
+            format!("Size{}", sort_state.indicator(SortColumn::Size)),
+            format!("Type{}", sort_state.indicator(SortColumn::Type)),
+        ])
+        .fg(focus_color)
+        .bold()
+        .underlined()
+        .height(1)
+        .bottom_margin(0);
+
+        // Filter items based on search query - only if S3 panel is selected
+        let search_query = if self.s3_panel_selected {
+            &self.props.search_query
+        } else {
+            &String::new()
+        };
+        let filtered_items = filter_items(&self.props.s3_data, search_query);
+        let rows = filtered_items
             .iter()
             .map(|item| FileManagerPage::get_s3_row(self, item, focus_color));
         let widths = [
@@ -451,7 +542,7 @@ impl FileManagerPage {
         let table = Table::new(rows, widths)
             .header(header)
             .block(block)
-            .highlight_style(
+            .row_highlight_style(
                 Style::default()
                     .fg(focus_color)
                     .bold()
@@ -465,7 +556,7 @@ impl FileManagerPage {
         table
     }
 
-    fn get_home_s3_block(&self) -> Block {
+    fn get_home_s3_block(&self) -> Block<'_> {
         if self.s3_panel_selected {
             Block::default()
                 .borders(Borders::ALL)
@@ -478,7 +569,7 @@ impl FileManagerPage {
         }
     }
 
-    fn get_home_local_block(&self) -> Block {
+    fn get_home_local_block(&self) -> Block<'_> {
         if !self.s3_panel_selected {
             Block::default()
                 .borders(Borders::ALL)
@@ -496,10 +587,11 @@ impl FileManagerPage {
     }
 
     pub fn move_up_s3_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.s3_data, &self.props.search_query).len();
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if i == 0_usize && !self.props.s3_data.is_empty() {
-                    self.props.s3_data.len() - 1
+                if i == 0_usize && filtered_len > 0 {
+                    filtered_len - 1
                 } else if i > 0 {
                     i - 1
                 } else {
@@ -508,15 +600,16 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty() {
+        if filtered_len > 0 {
             self.props.s3_table_state.select(Some(i));
         }
     }
 
     pub fn move_down_s3_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.s3_data, &self.props.search_query).len();
         let i = match self.props.s3_table_state.selected() {
             Some(i) => {
-                if !self.props.s3_data.is_empty() && i >= self.props.s3_data.len() - 1 {
+                if filtered_len > 0 && i >= filtered_len - 1 {
                     0
                 } else {
                     i + 1
@@ -524,16 +617,17 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.s3_data.is_empty() {
+        if filtered_len > 0 {
             self.props.s3_table_state.select(Some(i));
         }
     }
 
     pub fn move_up_local_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.local_data, &self.props.search_query).len();
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if i == 0_usize && !self.props.local_data.is_empty() {
-                    self.props.local_data.len() - 1
+                if i == 0_usize && filtered_len > 0 {
+                    filtered_len - 1
                 } else if i > 0 {
                     i - 1
                 } else {
@@ -542,15 +636,16 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty() {
+        if filtered_len > 0 {
             self.props.local_table_state.select(Some(i));
         }
     }
 
     pub fn move_down_local_table_selection(&mut self) {
+        let filtered_len = filter_items(&self.props.local_data, &self.props.search_query).len();
         let i = match self.props.local_table_state.selected() {
             Some(i) => {
-                if !self.props.local_data.is_empty() && i >= self.props.local_data.len() - 1 {
+                if filtered_len > 0 && i >= filtered_len - 1 {
                     0
                 } else {
                     i + 1
@@ -558,41 +653,57 @@ impl FileManagerPage {
             }
             None => 0,
         };
-        if !self.props.local_data.is_empty() {
+        if filtered_len > 0 {
             self.props.local_table_state.select(Some(i));
         }
     }
 
     pub fn handle_selected_local_row(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index))
         {
             if selected_row.is_directory {
+                // Clear search filter when navigating into a directory
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 let _ = self.action_tx.send(Action::FetchLocalData {
                     path: selected_row.path.clone(),
                 });
-                // self.fetch_local_data(selected_row.path.clone());
             }
         }
     }
 
     pub fn handle_selected_s3_row(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index))
         {
             if selected_row.is_bucket {
+                // Clear search filter when navigating into a bucket
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 self.go_into(Some(selected_row.path.clone()), None);
                 let _ = self.action_tx.send(Action::FetchS3Data {
                     bucket: self.current_state().current_bucket.clone(),
                     prefix: self.current_state().current_prefix.clone(),
                 });
             } else if selected_row.is_directory {
+                // Clear search filter when navigating into a directory
+                if !self.props.search_query.is_empty() {
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
                 self.go_into(None, Some(selected_row.path.clone())); //get bucket and prefix from previous entries
                 let _ = self.action_tx.send(Action::FetchS3Data {
                     bucket: self.current_state().current_bucket.clone(),
@@ -644,12 +755,29 @@ impl FileManagerPage {
         });
     }
 
+    fn handle_refresh(&mut self) {
+        if self.props.s3_loading {
+            return;
+        }
+        if self.s3_panel_selected {
+            let _ = self.action_tx.send(Action::FetchS3Data {
+                bucket: self.current_state().current_bucket.clone(),
+                prefix: self.current_state().current_prefix.clone(),
+            });
+        } else {
+            let _ = self.action_tx.send(Action::FetchLocalData {
+                path: self.props.current_local_path.clone(),
+            });
+        }
+    }
+
     fn transfer_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -683,11 +811,12 @@ impl FileManagerPage {
     }
 
     fn finish_recursive_transfer_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -727,11 +856,12 @@ impl FileManagerPage {
     }
 
     fn finish_recursive_delete_from_s3_to_local(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -765,11 +895,12 @@ impl FileManagerPage {
     }
 
     fn transfer_from_local_to_s3(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             if let Some(selected_bucket) = self.props.current_s3_bucket.clone() {
@@ -803,11 +934,12 @@ impl FileManagerPage {
     }
 
     fn delete_selected_s3_item(&mut self) {
+        let filtered_items = filter_items(&self.props.s3_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .s3_table_state
             .selected()
-            .and_then(|index| self.props.s3_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let cc = self.props.current_s3_creds.clone();
@@ -835,11 +967,12 @@ impl FileManagerPage {
     }
 
     fn delete_selected_local_item(&mut self) {
+        let filtered_items = filter_items(&self.props.local_data, &self.props.search_query);
         if let Some(selected_row) = self
             .props
             .local_table_state
             .selected()
-            .and_then(|index| self.props.local_data.get(index))
+            .and_then(|index| filtered_items.get(index).copied())
         {
             let sr = selected_row.clone();
             let selected_item = LocalSelectedItem::new(
@@ -893,9 +1026,12 @@ impl Component for FileManagerPage {
             show_delete_multiple_confirmation: false,
             show_download_confirmation: false,
             show_delete_error: false,
+            show_quit_confirmation: false,
+            show_shortcuts_overlay: false,
             s3_panel_selected: true,
             default_navigation_state: NavigationState::new(None, None),
             input: Input::default().with_value(String::from("")),
+            search_input: Input::default().with_value(String::from("")),
         }
             .move_with_state(state)
     }
@@ -906,9 +1042,9 @@ impl Component for FileManagerPage {
     {
         let new_props = Props::from(state);
         FileManagerPage {
-            show_delete_error: state.s3_delete_state.is_some()
-                || state.local_delete_state.is_some(),
-            show_bucket_input: state.create_bucket_state.is_some(),
+            show_delete_error: state.s3_delete_error.is_some()
+                || state.local_delete_error.is_some(),
+            show_bucket_input: state.create_bucket_error.is_some(),
             props: Props {
                 s3_history: self.props.s3_history.clone(),
                 s3_table_state: self.props.s3_table_state.clone(),
@@ -917,10 +1053,6 @@ impl Component for FileManagerPage {
             },
             ..self
         }
-    }
-
-    fn name(&self) -> &str {
-        "File Manager"
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
@@ -994,6 +1126,41 @@ impl Component for FileManagerPage {
                 }
                 _ => {}
             }
+        } else if self.props.search_mode {
+            // Handle search mode input
+            match key.code {
+                KeyCode::Enter => {
+                    // Apply filter and exit search mode
+                    let _ = self.action_tx.send(Action::SetSearchQuery {
+                        query: self.search_input.value().to_string(),
+                    });
+                    let _ = self.action_tx.send(Action::SetSearchMode { active: false });
+                }
+                KeyCode::Esc => {
+                    // Cancel search
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::ClearSearch);
+                }
+                _ => {
+                    // Forward key events to search input
+                    let _ = self.search_input.handle_event(&crossterm::event::Event::Key(key));
+                }
+            }
+        } else if self.show_quit_confirmation {
+            if let Some(confirmed) = QuitConfirmation::handle_key_event(key) {
+                if confirmed {
+                    let _ = self.action_tx.send(Action::Exit);
+                } else {
+                    self.show_quit_confirmation = false;
+                }
+            }
+        } else if self.show_shortcuts_overlay {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    self.show_shortcuts_overlay = false;
+                }
+                _ => {}
+            }
         } else {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => match self.s3_panel_selected {
@@ -1014,20 +1181,29 @@ impl Component for FileManagerPage {
                     true => self.handle_selected_s3_row(),
                     false => self.handle_selected_local_row(),
                 },
-                KeyCode::Esc => match self.s3_panel_selected {
-                    true => {
-                        if !self.props.s3_loading {
-                            self.handle_go_back_s3()
+                KeyCode::Esc => {
+                    // If there's an active search filter, clear it first
+                    if !self.props.search_query.is_empty() {
+                        self.search_input.reset();
+                        let _ = self.action_tx.send(Action::ClearSearch);
+                    } else {
+                        // Otherwise navigate back
+                        match self.s3_panel_selected {
+                            true => {
+                                if !self.props.s3_loading {
+                                    self.handle_go_back_s3()
+                                }
+                            }
+                            false => {
+                                if self.show_problem_popup {
+                                    self.show_problem_popup = false;
+                                } else {
+                                    self.handle_go_back_local()
+                                }
+                            }
                         }
                     }
-                    false => {
-                        if self.show_problem_popup {
-                            self.show_problem_popup = false;
-                        } else {
-                            self.handle_go_back_local()
-                        }
-                    }
-                },
+                }
                 KeyCode::Delete | KeyCode::Backspace => {
                     self.show_delete_confirmation = true;
                 }
@@ -1045,9 +1221,7 @@ impl Component for FileManagerPage {
                     self.s3_panel_selected = false;
                 }
                 KeyCode::Char('?') => {
-                    let _ = self.action_tx.send(Action::Navigate {
-                        page: ActivePage::Help,
-                    });
+                    self.show_shortcuts_overlay = true;
                 }
                 KeyCode::Char('l') => {
                     let _ = self.action_tx.send(Action::Navigate {
@@ -1063,7 +1237,51 @@ impl Component for FileManagerPage {
                     self.s3_panel_selected = !&self.s3_panel_selected;
                 }
                 KeyCode::Char('q') => {
-                    let _ = self.action_tx.send(Action::Exit);
+                    self.show_quit_confirmation = true;
+                }
+                KeyCode::F(5) => {
+                    self.handle_refresh();
+                }
+                KeyCode::F(1) => {
+                    // Sort by name
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Name,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Name,
+                        });
+                    }
+                }
+                KeyCode::F(2) => {
+                    // Sort by size
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Size,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Size,
+                        });
+                    }
+                }
+                KeyCode::F(3) => {
+                    // Sort by type
+                    if self.s3_panel_selected {
+                        let _ = self.action_tx.send(Action::SortS3 {
+                            column: SortColumn::Type,
+                        });
+                    } else {
+                        let _ = self.action_tx.send(Action::SortLocal {
+                            column: SortColumn::Type,
+                        });
+                    }
+                }
+                KeyCode::Char('/') => {
+                    // Activate search mode
+                    self.search_input.reset();
+                    let _ = self.action_tx.send(Action::SetSearchMode { active: true });
                 }
                 _ => {}
             }
@@ -1081,7 +1299,7 @@ impl ComponentRender<()> for FileManagerPage {
                 Constraint::Min(0),    // Take all space left after accounting for the bottom line
                 Constraint::Length(1), // Exactly one line for the bottom
             ])
-            .split(frame.size());
+            .split(frame.area());
 
         // Now split the top part horizontally into two side-by-side areas
         let horizontal_chunks = Layout::default()
@@ -1144,26 +1362,29 @@ impl ComponentRender<()> for FileManagerPage {
         frame.render_widget(help_line, status_line_layout[1]);
 
         if self.show_problem_popup {
-            let area = Self::centered_rect(60, 20, frame.size());
+            let area = Self::centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area); //this clears out the background
             let block = self.make_transfer_error_popup();
             frame.render_widget(block, area);
         } else if self.show_bucket_input {
             let block = self.make_bucket_name_input();
-            let area = Self::centered_rect(40, 20, frame.size());
+            let area = Self::centered_rect(40, 20, frame.area());
 
             frame.render_widget(Clear, area); //this clears out the background
             frame.render_widget(block, area);
-            if let Some(error) = self.props.create_bucket_state.clone() {
+            if let Some(ref error) = self.props.create_bucket_error {
                 let error_paragraph =
-                    Paragraph::new(format!("* {:?}", error)).style(Style::default().fg(Color::Red));
+                    Paragraph::new(format!("* {}", error)).style(Style::default().fg(Color::Red));
                 let error_rect = Rect::new(area.x + 1, area.y + 4, area.width, area.height);
                 frame.render_widget(Clear, error_rect);
                 frame.render_widget(error_paragraph, error_rect);
             }
-            frame.set_cursor(area.x + self.input.visual_cursor() as u16 + 1, area.y + 1);
+            frame.set_cursor_position(ratatui::layout::Position::new(
+                area.x + self.input.visual_cursor() as u16 + 1,
+                area.y + 1,
+            ));
         } else if self.show_delete_confirmation {
-            let area = Self::centered_rect(60, 20, frame.size());
+            let area = Self::centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area); //this clears out the background
             let block = self.make_delete_alert(
                 "Are you sure you want to delete this object?".to_string(),
@@ -1171,7 +1392,7 @@ impl ComponentRender<()> for FileManagerPage {
             );
             frame.render_widget(block, area);
         } else if self.show_delete_multiple_confirmation {
-            let area = Self::centered_rect(60, 20, frame.size());
+            let area = Self::centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area);
             let block = if self.props.s3_list_recursive_loading {
                 self.make_confirm_download_alert(
@@ -1192,7 +1413,7 @@ impl ComponentRender<()> for FileManagerPage {
             };
             frame.render_widget(block, area);
         } else if self.show_download_confirmation {
-            let area = Self::centered_rect(60, 20, frame.size());
+            let area = Self::centered_rect(60, 20, frame.area());
             frame.render_widget(Clear, area);
             let block = if self.props.s3_list_recursive_loading {
                 self.make_confirm_download_alert(
@@ -1213,20 +1434,38 @@ impl ComponentRender<()> for FileManagerPage {
             };
             frame.render_widget(block, area);
         } else if self.show_delete_error {
-            let possible_error = match (
-                self.props.s3_delete_state.clone(),
-                self.props.local_delete_state.clone(),
+            let possible_error: Option<String> = match (
+                &self.props.s3_delete_error,
+                &self.props.local_delete_error,
             ) {
-                (Some(err), None) => Some(err),
-                (None, Some(err)) => Some(err),
+                (Some(err), None) => Some(err.to_string()),
+                (None, Some(err)) => Some(err.to_string()),
                 _ => None,
             };
             if let Some(err) = possible_error {
-                let area = Self::centered_rect(60, 20, frame.size());
+                let area = Self::centered_rect(60, 20, frame.area());
                 frame.render_widget(Clear, area); //this clears out the background
                 let block = self.make_delete_alert(err, Color::Red);
                 frame.render_widget(block, area);
             }
+        } else if self.props.search_mode {
+            // Show search input popup
+            let area = Self::centered_rect(50, 15, frame.area());
+            frame.render_widget(Clear, area);
+            let block = self.make_search_input();
+            frame.render_widget(block, area);
+            frame.set_cursor_position(ratatui::layout::Position::new(
+                area.x + self.search_input.visual_cursor() as u16 + 1,
+                area.y + 1,
+            ));
+        } else if self.show_quit_confirmation {
+            QuitConfirmation::render(frame);
+        } else if self.show_shortcuts_overlay {
+            // Show keyboard shortcuts overlay
+            let area = Self::centered_rect(50, 60, frame.area());
+            frame.render_widget(Clear, area);
+            let table = self.make_shortcuts_overlay();
+            frame.render_widget(table, area);
         }
     }
 }
