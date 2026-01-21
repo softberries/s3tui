@@ -350,6 +350,8 @@ mod tests {
             secret_key: "test_secret".to_string(),
             default_region: "us-east-1".to_string(),
             selected: true,
+            endpoint_url: None,
+            force_path_style: false,
         }
     }
 

@@ -99,17 +99,30 @@ default_region=eu-west-1
 ```
 Make sure there is a new line at the end and there are no leading spaces on the lines.
 
-For third-party s3 compatible storage like RustFS (https://rustfs.com/) you can add:
-```
-endpoint_url=http://localhost:9000
-```
+### S3-Compatible Storage
 
-Some S3 compatible storage need to access for accessing the files the parameter [force_path_style](https://docs.aws.amazon.com/sdk-for-swift/latest/api/awss3/documentation/awss3/endpointparams/forcepathstyle/) set. 
-For this there is an optional parameter (default value=false) that can be set inside your `.data`
+s3tui supports S3-compatible storage providers. Example credential file:
 
 ```
+access_key=minioadmin
+secret_key=minioadmin
+default_region=us-east-1
+endpoint_url=http://127.0.0.1:9000
 force_path_style=true
 ```
+
+| Provider | endpoint_url | force_path_style |
+|----------|--------------|------------------|
+| [MinIO](https://min.io/) | `http://localhost:9000` | `true` |
+| [RustFS](https://rustfs.com/) | `http://localhost:9000` | `true` |
+| [Backblaze B2](https://www.backblaze.com/b2/) | `https://s3.us-west-000.backblazeb2.com` | `false` |
+| [Wasabi](https://wasabi.com/) | `https://s3.wasabisys.com` | `false` |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | `https://<account_id>.r2.cloudflarestorage.com` | `true` |
+| [DigitalOcean Spaces](https://www.digitalocean.com/products/spaces) | `https://<region>.digitaloceanspaces.com` | `false` |
+
+The `force_path_style` parameter controls URL formatting:
+- `false` (default): Virtual-hosted style (`bucket.endpoint/key`)
+- `true`: Path style (`endpoint/bucket/key`)
 
 3. **Installation from crates.io**:
     - Ensure you have Rust and `cargo` installed.
@@ -145,3 +158,78 @@ you to start transferring files immediately.
 Enhance your productivity with `s3tui`, the command-line interface that bridges the gap between local file management
 and cloud storage with ease and efficiency. Whether you're managing large datasets or performing routine
 backups, `s3tui` makes S3 file transfer tasks intuitive and manageable directly from your terminal.
+
+## Development
+
+### Building
+
+```bash
+# Debug build
+cargo build
+
+# Release build
+cargo build --release
+
+# Run directly
+cargo run
+```
+
+### Testing
+
+```bash
+# Run unit tests
+cargo test
+
+# Run all tests including integration tests (requires Docker)
+cargo test -- --include-ignored
+
+# Run only integration tests (requires Docker)
+cargo test --test s3_compat_tests -- --ignored
+
+# Run a specific test
+cargo test test_name
+```
+
+Integration tests use [testcontainers](https://github.com/testcontainers/testcontainers-rs) to spin up MinIO containers automatically. Make sure Docker is running before executing integration tests.
+
+### Code Quality
+
+```bash
+# Run linter
+cargo clippy
+
+# Format code
+cargo fmt
+
+# Check formatting without changes
+cargo fmt -- --check
+```
+
+## Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. **Fork the repository** and create your branch from `main`
+2. **Make your changes** and ensure tests pass
+3. **Run the linter** (`cargo clippy`) and fix any warnings
+4. **Format your code** (`cargo fmt`)
+5. **Submit a pull request** with a clear description of your changes
+
+### Guidelines
+
+- Follow Rust idioms and best practices
+- Add tests for new functionality
+- Update documentation as needed
+- Keep commits focused and atomic
+- Use descriptive commit messages
+
+### Reporting Issues
+
+Found a bug or have a feature request? Please [open an issue](https://github.com/softberries/s3tui/issues) with:
+- A clear description of the problem or feature
+- Steps to reproduce (for bugs)
+- Your environment (OS, Rust version, s3tui version)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-/// Representation of the credentials stored in your configuration
+/// Representation of the minio stored in your configuration
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FileCredential {
     pub name: String,
@@ -47,7 +47,7 @@ fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential
     }
 
     if credentials.is_empty() {
-        Err(Report::msg("Missing credentials in your data creds folder"))
+        Err(Report::msg("Missing minio in your data creds folder"))
     } else {
         Ok(credentials)
     }
@@ -123,7 +123,7 @@ mod tests {
         let res = load_credentials_from_dir(dir.path());
         assert_eq!(
             res.err().unwrap().to_string(),
-            Report::msg("Missing credentials in your data creds folder").to_string()
+            Report::msg("Missing minio in your data creds folder").to_string()
         );
     }
 

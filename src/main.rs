@@ -10,19 +10,21 @@
 #![forbid(unsafe_code)]
 mod cli;
 mod components;
-mod model;
-mod services;
-mod settings;
 mod state_store;
 mod termination;
 mod ui_manager;
-mod utils;
 
-use crate::settings::file_credentials;
+// Re-use library modules
+use s3tui::model;
+use s3tui::services;
+use s3tui::settings;
+use s3tui::utils;
+
+use settings::file_credentials;
 use crate::state_store::StateStore;
 use crate::termination::{create_termination, Interrupted};
 use crate::ui_manager::UiManager;
-use crate::utils::{initialize_logging, initialize_panic_handler};
+use utils::{initialize_logging, initialize_panic_handler};
 use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre;
@@ -43,10 +45,10 @@ async fn main() -> eyre::Result<()> {
                 ui_manager.main_loop(state_rx, interrupt_rx.resubscribe()),
             )?;
         } else {
-            eprintln!("No credentials file found, add credentials file into your $S3TUI_DATA/creds directory in your home directory.");
+            eprintln!("No minio file found, add minio file into your $S3TUI_DATA/creds directory in your home directory.");
         }
     } else {
-        eprintln!("Problem reading credential files, add at least one credentials file into $S3TUI_DATA/creds in your home directory.");
+        eprintln!("Problem reading credential files, add at least one minio file into $S3TUI_DATA/creds in your home directory.");
     }
 
     if let Ok(reason) = interrupt_rx.recv().await {

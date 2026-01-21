@@ -13,7 +13,7 @@ pub enum S3Error {
     ObjectNotFound(String),
     /// Network or connectivity error
     NetworkError(String),
-    /// Invalid credentials
+    /// Invalid minio
     InvalidCredentials(String),
     /// Bucket already exists (for creation)
     BucketAlreadyExists(String),
@@ -30,7 +30,7 @@ impl fmt::Display for S3Error {
             S3Error::BucketNotFound(msg) => write!(f, "Bucket not found: {}", msg),
             S3Error::ObjectNotFound(msg) => write!(f, "Object not found: {}", msg),
             S3Error::NetworkError(msg) => write!(f, "Network error: {}", msg),
-            S3Error::InvalidCredentials(msg) => write!(f, "Invalid credentials: {}", msg),
+            S3Error::InvalidCredentials(msg) => write!(f, "Invalid minio: {}", msg),
             S3Error::BucketAlreadyExists(msg) => write!(f, "Bucket already exists: {}", msg),
             S3Error::BucketNotEmpty(msg) => write!(f, "Bucket not empty: {}", msg),
             S3Error::Other(msg) => write!(f, "{}", msg),

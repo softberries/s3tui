@@ -59,7 +59,7 @@ const RETRY_DELAY_MS: u64 = 1000;
 /// How often to persist download progress (in bytes)
 const DOWNLOAD_PROGRESS_PERSIST_INTERVAL: u64 = 10 * 1024 * 1024; // 10 MB
 
-/// Cache key for S3 clients - combines credentials identity, region, and endpoint
+/// Cache key for S3 clients - combines minio identity, region, and endpoint
 #[derive(Clone, Debug)]
 struct ClientCacheKey {
     access_key_id: String,
@@ -93,7 +93,7 @@ impl Hash for ClientCacheKey {
 /// Pool of S3 clients for reuse across operations.
 ///
 /// AWS SDK clients are designed to be reused. This pool caches clients
-/// by credentials and region to avoid recreating them for each operation.
+/// by minio and region to avoid recreating them for each operation.
 #[derive(Clone)]
 pub struct S3ClientPool {
     clients: Arc<RwLock<HashMap<ClientCacheKey, Client>>>,
@@ -107,10 +107,10 @@ impl S3ClientPool {
         }
     }
 
-    /// Get an existing client or create a new one for the given credentials, region, and endpoint
+    /// Get an existing client or create a new one for the given minio, region, and endpoint
     ///
     /// # Arguments
-    /// * `credentials` - AWS credentials
+    /// * `minio` - AWS minio
     /// * `region` - AWS region
     /// * `endpoint_url` - Optional custom endpoint URL for S3-compatible storage
     /// * `force_path_style` - Enable path-style addressing (required by some S3-compatible services)
@@ -189,7 +189,7 @@ impl S3ClientPool {
         client
     }
 
-    /// Clear all cached clients (useful when credentials are refreshed)
+    /// Clear all cached clients (useful when minio are refreshed)
     #[allow(dead_code)] // Will be used for credential refresh feature
     pub async fn clear(&self) {
         let mut clients = self.clients.write().await;
@@ -354,7 +354,7 @@ impl S3DataFetcher {
         let credentials = Credentials::new(
             access_key,
             secret_access_key,
-            None,     // Token, if using temporary credentials (like STS)
+            None,     // Token, if using temporary minio (like STS)
             None,     // Expiry time, if applicable
             "manual", // Source, just a label for debugging
         );
@@ -1329,7 +1329,7 @@ impl S3DataFetcher {
             credentials = Credentials::new(
                 access_key,
                 secret_access_key,
-                None,     // Token, if using temporary credentials (like STS)
+                None,     // Token, if using temporary minio (like STS)
                 None,     // Expiry time, if applicable
                 "manual", // Source, just a label for debugging
             );
@@ -1366,7 +1366,7 @@ mod tests {
         let _client1 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
-        // Second call with same credentials and region should reuse
+        // Second call with same minio and region should reuse
         let _client2 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
@@ -1384,7 +1384,7 @@ mod tests {
         let _client1 = pool.get_or_create(&creds1, "us-east-1", None, false).await;
         let _client2 = pool.get_or_create(&creds2, "us-east-1", None, false).await;
 
-        // Different credentials should create different clients
+        // Different minio should create different clients
         assert_eq!(pool.cached_count().await, 2);
     }
 
@@ -1397,7 +1397,7 @@ mod tests {
         let _client1 = pool.get_or_create(&credentials, "us-east-1", None, false).await;
         assert_eq!(pool.cached_count().await, 1);
 
-        // Same credentials but with custom endpoint should create new client
+        // Same minio but with custom endpoint should create new client
         let _client2 = pool
             .get_or_create(&credentials, "us-east-1", Some("http://localhost:9000"), true)
             .await;
