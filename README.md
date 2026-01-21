@@ -9,7 +9,7 @@
 </div>
 <div style="text-align: center;">
 
-[![CI][s0]][l0] [![crates][s1]][l1] ![MIT][s2] [![UNSAFE][s3]][l3] [![TWEET][s6]][l6] [![dep_status][s7]][l7]
+[![CI][s0]][l0] [![crates][s1]][l1] ![MIT][s2] [![UNSAFE][s3]][l3] [![LinkedIn][s6]][l6] [![dep_status][s7]][l7]
 
 </div>
 
@@ -27,9 +27,9 @@
 
 [l3]: https://github.com/rust-secure-code/safety-dance/
 
-[s6]: https://img.shields.io/twitter/follow/grajo?label=follow&style=social
+[s6]: https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin
 
-[l6]: https://twitter.com/intent/follow?screen_name=grajo
+[l6]: https://www.linkedin.com/in/krzysztofgrajek/
 
 [s7]: https://deps.rs/repo/github/softberries/s3tui/status.svg
 
@@ -37,7 +37,7 @@
 
 ---
 
-# s3tui - AWS S3 Transfer CLI
+# s3tui - S3 Compatible Transfer CLI
 
 `s3tui` is a ~~powerful~~ terminal-based application that enables seamless file transfers between your local machine and
 multiple AWS S3 accounts. Crafted with the [ratatui](https://github.com/ratatui-org/ratatui) Rust TUI framework, `s3tui`
