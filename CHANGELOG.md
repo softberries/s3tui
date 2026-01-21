@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-21
+
+### Added
+
+- S3-compatible storage support (MinIO, Backblaze B2, Wasabi, Cloudflare R2, etc.)
+- `endpoint_url` credential option for custom S3 endpoints
+- `force_path_style` credential option for path-style URL formatting
+- MinIO integration tests using testcontainers
+- Development and Contributing sections in README
+
 ### Features
 
 - Add ability to keep unfinished transfers during app restarts([2b71177](https://github.com/softberries/s3tui/commit/2b71177229c96109e312b5b98fd4d1fe3c1aba4c))
@@ -32,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improve status line with more context, change help screen to overlay *(ui)*([ec287e3](https://github.com/softberries/s3tui/commit/ec287e3454f38c1c6b092bcc69e3d5d4e65e3305))
 
+- Add sorting on s3 and local components by name (f1), size (f2) and type (f3)([f2730bd](https://github.com/softberries/s3tui/commit/f2730bd8679e06ae2658a9856650ad4282161d00))
 
 ### Refactoring
 
@@ -43,22 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refactor the whole transfer logic and encapsulate it in transfer manager *(transfers)*([36d1a36](https://github.com/softberries/s3tui/commit/36d1a362d92cddad76e286f517e25d21867df8f2))
 
+- Refactor transfer properties to transfer state enum([9c0f930](https://github.com/softberries/s3tui/commit/9c0f93016a1f049082f86fe2ce4a5baa514a53a0))
 
-### Features
+### Bug Fixes
 
-- Improve status line with more context, change help screen to overlay *(ui)*([ec287e3](https://github.com/softberries/s3tui/commit/ec287e3454f38c1c6b092bcc69e3d5d4e65e3305))
+- Fix refresh on s3 after transfer, add F5 as manual refresh action([34438cf](https://github.com/softberries/s3tui/commit/34438cf719fde977fe54a78e5b036d870ae94fb6))
 
-
-### Features
-
-- Add sorting on s3 and local components by name (f1), size (f2) and type (f3)([f2730bd](https://github.com/softberries/s3tui/commit/f2730bd8679e06ae2658a9856650ad4282161d00))
-
+- Fix progress reporting on transfers component([07cf191](https://github.com/softberries/s3tui/commit/07cf191a3d5bc50487ede00e7a0c4964f770796b))
 
 ### Other
 
-- Enhanced transfer display with progres bar and stats([5fd9a88](https://github.com/softberries/s3tui/commit/5fd9a881bfc1316a576df2e49492a2f7b480beac))
-
-- Merge pull request #16 from softberries/code-improvements([0156dff](https://github.com/softberries/s3tui/commit/0156dff7479e55028074d3147a8ae002d79fcd42))
+- Enhanced transfer display with progress bar and stats([5fd9a88](https://github.com/softberries/s3tui/commit/5fd9a881bfc1316a576df2e49492a2f7b480beac))
 
 - Upgraded dependencies([ee64f04](https://github.com/softberries/s3tui/commit/ee64f0466494d2a2c9fd7d9780db085fab0d3f8a))
 
@@ -66,29 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improved iterator patterns across the code base([fe5e978](https://github.com/softberries/s3tui/commit/fe5e9784cf6206a3fe1caddcfbac27418e07678e))
 
-
-### Refactoring
-
-- Refactor transfer properties to transfer state enum([9c0f930](https://github.com/softberries/s3tui/commit/9c0f93016a1f049082f86fe2ce4a5baa514a53a0))
-
-- Refactor transfer properties to transfer state enum([d19dd23](https://github.com/softberries/s3tui/commit/d19dd233f7959809afa75fa2142322af7713a58c))
-
-
-### Bug Fixes
-
-- Fix refresh on s3 after transfer, add F5 as manual refresh action([34438cf](https://github.com/softberries/s3tui/commit/34438cf719fde977fe54a78e5b036d870ae94fb6))
-
-
-### Bug Fixes
-
-- Fix progress reporting on transfers component([07cf191](https://github.com/softberries/s3tui/commit/07cf191a3d5bc50487ede00e7a0c4964f770796b))
-
-
-### Other
-
-- Switching to release-plz([636b65c](https://github.com/softberries/s3tui/commit/636b65c1ac17d38936e033e055aab85f80ab1bae))
-
 - Remove excessive cloning([8bae65b](https://github.com/softberries/s3tui/commit/8bae65b271b0aa596d0e1ddfc81127f162a08087))
 
 - Unify flatten methods([91f5cd7](https://github.com/softberries/s3tui/commit/91f5cd747e484958fe701214a91305e720875151))
 
+- Switching to release-plz([636b65c](https://github.com/softberries/s3tui/commit/636b65c1ac17d38936e033e055aab85f80ab1bae))
