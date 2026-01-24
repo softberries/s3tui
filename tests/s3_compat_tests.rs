@@ -5,6 +5,7 @@
 //!
 //! Run with: cargo test --test s3_compat_tests -- --ignored
 
+use futures::future::join_all;
 use s3tui::model::local_selected_item::LocalSelectedItem;
 use s3tui::model::s3_selected_item::S3SelectedItem;
 use s3tui::model::transfer_state::TransferState;
@@ -352,4 +353,176 @@ async fn test_minio_list_objects_with_prefix() {
         .await
         .expect("Failed to list folder1 objects");
     assert_eq!(folder1_objects.len(), 2, "Expected 2 files in folder1/");
+}
+
+#[tokio::test]
+#[ignore] // Requires Docker
+async fn test_concurrent_transfers() {
+    let (_container, creds) = setup_minio().await;
+    let fetcher = S3DataFetcher::new(creds.clone());
+
+    // Create a bucket
+    let bucket_name = "concurrent-test-bucket";
+    fetcher
+        .create_bucket(bucket_name.to_string(), "us-east-1".to_string())
+        .await
+        .expect("Failed to create bucket");
+
+    // Create multiple test files - keep them alive until uploads complete
+    let file_count = 5;
+    let mut temp_files = Vec::new();
+    let mut handles = Vec::new();
+
+    for i in 0..file_count {
+        let content = format!("Content for file {}", i);
+        let test_file = create_test_file(content.as_bytes());
+        let file_path = test_file.path().to_str().unwrap().to_string();
+        temp_files.push(test_file); // Keep temp file alive
+
+        let creds_clone = creds.clone();
+        let bucket = bucket_name.to_string();
+        let fetcher_clone = S3DataFetcher::new(creds_clone.clone());
+
+        // Spawn concurrent upload tasks
+        let handle = tokio::spawn(async move {
+            let (tx, mut rx) = mpsc::channel(100);
+
+            let upload_item = LocalSelectedItem {
+                name: format!("concurrent-file-{}.txt", i),
+                path: file_path,
+                is_directory: false,
+                destination_bucket: bucket,
+                destination_path: format!("concurrent-file-{}.txt", i),
+                s3_creds: creds_clone,
+                children: None,
+                transfer_state: TransferState::Pending,
+                job_id: None,
+            };
+
+            let result = fetcher_clone.upload_item(upload_item, tx, None).await;
+            rx.close();
+            while rx.recv().await.is_some() {}
+            result
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all uploads to complete
+    let results: Vec<_> = join_all(handles).await;
+
+    // Verify all uploads succeeded
+    for (i, result) in results.into_iter().enumerate() {
+        assert!(
+            result.is_ok(),
+            "Task {} should not panic",
+            i
+        );
+        assert!(
+            result.unwrap().is_ok(),
+            "Upload {} should succeed",
+            i
+        );
+    }
+
+    // Verify all files are in the bucket
+    let objects = fetcher
+        .list_current_location(Some(bucket_name.to_string()), None)
+        .await
+        .expect("Failed to list objects");
+
+    assert_eq!(
+        objects.len(),
+        file_count,
+        "Expected {} objects, got {}",
+        file_count,
+        objects.len()
+    );
+}
+
+#[tokio::test]
+#[ignore] // Requires Docker
+async fn test_error_recovery_nonexistent_bucket() {
+    let (_container, creds) = setup_minio().await;
+    let fetcher = S3DataFetcher::new(creds.clone());
+
+    // Try to list objects in a non-existent bucket
+    let result = fetcher
+        .list_current_location(Some("nonexistent-bucket".to_string()), None)
+        .await;
+
+    // Should return an error, not panic
+    assert!(result.is_err(), "Listing non-existent bucket should fail gracefully");
+}
+
+#[tokio::test]
+#[ignore] // Requires Docker
+async fn test_error_recovery_upload_to_nonexistent_bucket() {
+    let (_container, creds) = setup_minio().await;
+    let fetcher = S3DataFetcher::new(creds.clone());
+
+    // Create a test file
+    let test_file = create_test_file(b"Test content");
+    let file_path = test_file.path().to_str().unwrap().to_string();
+
+    let (tx, mut rx) = mpsc::channel(100);
+
+    let upload_item = LocalSelectedItem {
+        name: "test-file.txt".to_string(),
+        path: file_path,
+        is_directory: false,
+        destination_bucket: "nonexistent-bucket".to_string(),
+        destination_path: "test-file.txt".to_string(),
+        s3_creds: creds,
+        children: None,
+        transfer_state: TransferState::Pending,
+        job_id: None,
+    };
+
+    // Upload should fail gracefully
+    let result = fetcher.upload_item(upload_item, tx, None).await;
+    rx.close();
+    while rx.recv().await.is_some() {}
+
+    assert!(result.is_err(), "Upload to non-existent bucket should fail gracefully");
+}
+
+#[tokio::test]
+#[ignore] // Requires Docker
+async fn test_error_recovery_download_nonexistent_object() {
+    let (_container, creds) = setup_minio().await;
+    let fetcher = S3DataFetcher::new(creds.clone());
+
+    // Create a bucket
+    let bucket_name = "error-recovery-bucket";
+    fetcher
+        .create_bucket(bucket_name.to_string(), "us-east-1".to_string())
+        .await
+        .expect("Failed to create bucket");
+
+    // Create temp directory for download
+    let download_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let download_path = download_dir.path().to_str().unwrap().to_string();
+
+    let (tx, mut rx) = mpsc::channel(100);
+
+    // Try to download a non-existent object
+    let download_item = S3SelectedItem {
+        bucket: Some(bucket_name.to_string()),
+        name: "nonexistent-file.txt".to_string(),
+        path: Some("nonexistent-file.txt".to_string()),
+        is_directory: false,
+        is_bucket: false,
+        destination_dir: download_path,
+        s3_creds: creds,
+        children: None,
+        transfer_state: TransferState::Pending,
+        job_id: None,
+    };
+
+    let result = fetcher.download_item(download_item, tx, None).await;
+    rx.close();
+    while rx.recv().await.is_some() {}
+
+    assert!(result.is_err(), "Download of non-existent object should fail gracefully");
 }

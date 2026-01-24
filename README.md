@@ -180,6 +180,9 @@ cargo run
 # Run unit tests
 cargo test
 
+# Run property-based tests
+cargo test --test property_tests
+
 # Run all tests including integration tests (requires Docker)
 cargo test -- --include-ignored
 
@@ -188,9 +191,14 @@ cargo test --test s3_compat_tests -- --ignored
 
 # Run a specific test
 cargo test test_name
+
+# Run benchmarks
+cargo bench
 ```
 
 Integration tests use [testcontainers](https://github.com/testcontainers/testcontainers-rs) to spin up MinIO containers automatically. Make sure Docker is running before executing integration tests.
+
+Benchmarks use [criterion](https://github.com/bheisler/criterion.rs) for performance measurement.
 
 ### Code Quality
 
