@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add missing files([762ab0c](https://github.com/softberries/s3tui/commit/762ab0c762d78f6d5f0532446cc6c53687d3ccf0))
 
 
+### Miscellaneous
+
+- Release v0.4.1([4ae38b1](https://github.com/softberries/s3tui/commit/4ae38b10384d0cda1d15a37464cf2a690dccaaef))
+
+
+### Other
+
+- Added some integration and prop tests([f90da2b](https://github.com/softberries/s3tui/commit/f90da2b8fe56c13ffd9b386403621375715240f4))
+
+
+### Bug Fixes
+
+- Add missing files([762ab0c](https://github.com/softberries/s3tui/commit/762ab0c762d78f6d5f0532446cc6c53687d3ccf0))
+
+
 ### Other
 
 - Added some integration and prop tests([f90da2b](https://github.com/softberries/s3tui/commit/f90da2b8fe56c13ffd9b386403621375715240f4))
