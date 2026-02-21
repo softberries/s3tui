@@ -1167,8 +1167,7 @@ impl S3DataFetcher {
             self.get_s3_client(None).await
         };
         
-        let client_with_location = client;
-        let mut response = client_with_location
+        let mut response = client
             .list_objects_v2()
             .delimiter("/")
             .set_prefix(prefix)
