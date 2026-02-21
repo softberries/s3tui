@@ -74,6 +74,7 @@ productivity with S3 services.
 - **Environment Configuration**: Customize settings via environment variables or utilize default settings compliant with
   the XDG Base Directory Specification.
 - **Error Handling**: Integrated `color_eyre` panic hook for clear and colorized error reporting.
+- **Custom Config Path**: Specify a custom credentials file path with the `--creds-file` flag, overriding the default `creds` directory lookup.
 - **Version Information**: Quickly view the application version with the `--version` command.
 
 ## Setup
@@ -143,6 +144,10 @@ The `force_path_style` parameter controls URL formatting:
 - Navigate to the project directory and run:
 ```bash
 ./target/release/s3tui
+```
+- You can also specify a custom credentials file path using the `--creds-file` flag:
+```bash
+s3tui --creds-file /path/to/credentials
 ```
 
 ## Logs
