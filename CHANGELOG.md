@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- Handle empty bucket regions in S3-compatible storage([c325ddd](https://github.com/softberries/s3tui/commit/c325dddd7bdf7c057069e4bd66419302ba274b5e))
+
+
+### Miscellaneous
+
+- Release v0.4.1([7be6997](https://github.com/softberries/s3tui/commit/7be69976e71c399676834f567f7946690aa07053))
+
+
+### Refactoring
+
+- Remove unnecessary intermediate variable client_with_location([aaace72](https://github.com/softberries/s3tui/commit/aaace7208695aee49aed63effd962cd10f4c4a27))
+
+
+### Bug Fixes
+
 - Add missing files([762ab0c](https://github.com/softberries/s3tui/commit/762ab0c762d78f6d5f0532446cc6c53687d3ccf0))
 
 
