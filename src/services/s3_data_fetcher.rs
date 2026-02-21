@@ -1133,19 +1133,41 @@ impl S3DataFetcher {
         prefix: Option<String>,
     ) -> eyre::Result<Vec<S3DataItem>> {
         let mut all_objects = Vec::new();
-        let location = self.get_bucket_location(bucket).await?;
-        let creds = self.credentials.clone();
-        let temp_file_creds = FileCredential {
-            name: "temp".to_string(),
-            access_key: creds.access_key_id().to_string(),
-            secret_key: creds.secret_access_key().to_string(),
-            default_region: location.clone(),
-            endpoint_url: self.endpoint_url.clone(),
-            force_path_style: self.force_path_style,
-            selected: false,
+        // Try to get bucket location, but fall back to default region if it fails or returns empty
+        let location = match self.get_bucket_location(bucket).await {
+            Ok(loc) if !loc.is_empty() => {
+                tracing::debug!("Bucket '{}' location: {}", bucket, loc);
+                loc
+            }
+            Ok(loc) => {
+                tracing::warn!("Bucket '{}' returned empty location, using default region '{}'", bucket, self.default_region);
+                self.default_region.clone()
+            }
+            Err(e) => {
+                tracing::warn!("Failed to get bucket location for '{}', using default region '{}': {:?}", bucket, self.default_region, e);
+                self.default_region.clone()
+            }
         };
-        let client_with_location = self.get_s3_client(Some(temp_file_creds)).await;
-        let mut response = client_with_location
+        
+        // Only create a new client if the location is different from default
+        let client = if location != self.default_region {
+            let creds = self.credentials.clone();
+            let temp_file_creds = FileCredential {
+                name: "temp".to_string(),
+                access_key: creds.access_key_id().to_string(),
+                secret_key: creds.secret_access_key().to_string(),
+                default_region: location.clone(),
+                endpoint_url: self.endpoint_url.clone(),
+                force_path_style: self.force_path_style,
+                selected: false,
+            };
+            self.get_s3_client(Some(temp_file_creds)).await
+        } else {
+            // Use the existing client for better performance
+            self.get_s3_client(None).await
+        };
+        
+        let mut response = client
             .list_objects_v2()
             .delimiter("/")
             .set_prefix(prefix)
