@@ -74,7 +74,7 @@ productivity with S3 services.
 - **Environment Configuration**: Customize settings via environment variables or utilize default settings compliant with
   the XDG Base Directory Specification.
 - **Error Handling**: Integrated `color_eyre` panic hook for clear and colorized error reporting.
-- **Custom Config Path**: Specify a custom credentials file path with the `--creds-file` flag, overriding the default `creds` directory lookup.
+- **Custom Credentials Path**: Specify a custom credentials file path with the `--creds-file` flag, overriding the default `creds` directory lookup.
 - **Version Information**: Quickly view the application version with the `--version` command.
 
 ## Setup

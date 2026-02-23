@@ -73,8 +73,8 @@ pub fn load_credentials(creds_file: Option<PathBuf>) -> eyre::Result<Vec<FileCre
     }
 }
 
-fn load_credentials_from_file(dir_path: &Path) -> eyre::Result<Vec<FileCredential>> {
-    Ok(vec![FileCredential::try_parse_file(dir_path, true)?])
+fn load_credentials_from_file(file_path: &Path) -> eyre::Result<Vec<FileCredential>> {
+    Ok(vec![FileCredential::try_parse_file(file_path, true)?])
 }
 
 fn load_credentials_from_dir(dir_path: &Path) -> eyre::Result<Vec<FileCredential>> {
