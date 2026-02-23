@@ -33,12 +33,12 @@ use color_eyre::eyre;
 async fn main() -> eyre::Result<()> {
     initialize_logging()?;
     initialize_panic_handler()?;
-    let _args = Cli::parse();
+    let args = Cli::parse();
     let (terminator, mut interrupt_rx) = create_termination();
     let (state_store, state_rx) = StateStore::new();
     let (ui_manager, action_rx) = UiManager::new();
 
-    if let Ok(creds) = file_credentials::load_credentials() {
+    if let Ok(creds) = file_credentials::load_credentials(args.creds_file) {
         if !creds.is_empty() {
             tokio::try_join!(
                 state_store.main_loop(terminator, action_rx, interrupt_rx.resubscribe(), creds),
