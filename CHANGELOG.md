@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Specify a custom credentials file path with the `--creds-file`([f0e89ef](https://github.com/softberries/s3tui/commit/f0e89efd88c5a9601e5bed8c7214e5262d612f89))
 
 
+### Miscellaneous
+
+- Release v0.4.2([92898d8](https://github.com/softberries/s3tui/commit/92898d8083125e03ee4fc9e34baa2df21aa1487e))
+
+
+### Bug Fixes
+
+- Rename dir_path param to file_path, fix README heading([d987b14](https://github.com/softberries/s3tui/commit/d987b14be61205151b253cf6dc185c736b9939c1))
+
+
+### Features
+
+- Specify a custom credentials file path with the `--creds-file`([f0e89ef](https://github.com/softberries/s3tui/commit/f0e89efd88c5a9601e5bed8c7214e5262d612f89))
+
+
 ### Bug Fixes
 
 - Handle empty bucket regions in S3-compatible storage([c325ddd](https://github.com/softberries/s3tui/commit/c325dddd7bdf7c057069e4bd66419302ba274b5e))
